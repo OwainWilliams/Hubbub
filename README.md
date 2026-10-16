@@ -38,7 +38,7 @@ npm install
 npx wrangler login
 npm run deploy
 ```
-Browser access is restricted by `ALLOWED_ORIGIN` in `worker/wrangler.toml` (currently `https://thesecretstage.vip`; use a comma-separated list for more than one). `localhost` is always allowed for development. The app is published at https://thesecretstage.vip/hubbub/.
+Browser access is restricted by `ALLOWED_ORIGIN` in `worker/wrangler.toml` (currently `https://thesecretstage.vip`; use a comma-separated list for more than one). `localhost` is always allowed for development. The app is published at https://thesecretstage.vip/Hubbub/ (the path is case-sensitive).
 
 ## Status
 
