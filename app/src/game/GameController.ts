@@ -83,6 +83,11 @@ export class GameController implements RendererHost {
     this.wireHud();
     this.refreshRoster();
     this.updatePlaceLabel();
+    this.hud.setHint(
+      this.renderer.kind === '3d'
+        ? 'Move with WASD or the arrow keys, or click where to walk. Drag to turn the camera, scroll to zoom, Q and E to rotate. Esc leaves the chat box.'
+        : 'Move with WASD or the arrow keys, or click or tap where to walk. Esc leaves the chat box.',
+    );
     this.installTestHooks();
   }
 

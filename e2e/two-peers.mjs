@@ -6,6 +6,7 @@
 import { chromium } from 'playwright-core';
 
 const APP_URL = process.env.APP_URL ?? 'http://localhost:5173';
+const VIEW = process.env.VIEW ?? '2d'; // '2d' or '3d': which view to test
 const CHROMIUM = process.env.CHROMIUM; // optional: path to a Chromium binary
 const ROOM = `E2E-${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
 
@@ -40,7 +41,7 @@ async function join(name) {
   const ctx = await browser.newContext();
   const page = await ctx.newPage();
   page.on('pageerror', (e) => console.log(`[${name}] page error:`, e.message));
-  await page.goto(`${APP_URL}/#${ROOM}`);
+  await page.goto(`${APP_URL}/?view=${VIEW}#${ROOM}`);
   await page.fill('#name', name);
   await page.click('#join-button');
   await page.waitForSelector('#room-info');

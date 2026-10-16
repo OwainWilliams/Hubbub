@@ -60,7 +60,8 @@
       #banner { position: fixed; top: 64px; left: 50%; transform: translateX(-50%); z-index: 12; max-width: min(560px, calc(100% - 20px)); background: #3a2420; border: 1px solid var(--brick); border-radius: 4px; padding: 8px 12px; font-size: .9rem; display: flex; gap: 10px; align-items: center; }
       #banner[hidden] { display: none; }
       #banner button { background: var(--paper); color: var(--ink); border: 0; border-radius: 3px; padding: 5px 12px; font-weight: 700; cursor: pointer; flex: none; }
-      #controls { left: 50%; bottom: 10px; transform: translateX(-50%); display: flex; gap: 8px; }
+      /* Bottom right, clear of the chat box on the left, however narrow the window. */
+      #controls { right: 10px; bottom: 34px; display: flex; gap: 8px; }
       #controls button { background: var(--night); color: var(--paper); border: 1px solid var(--line); border-radius: 3px; padding: 7px 14px; cursor: pointer; }
       #controls button[data-state=on] { border-color: var(--moss); color: #9fcf9a; }
       #controls button[data-state=muted] { border-color: var(--brick); color: #e08a6b; }
@@ -116,6 +117,8 @@
         <input type="text" id="name" maxlength="24" placeholder="e.g. Mortimer" />
         <label>Your look</label>
         <div id="avatar-picker"></div>
+        <label>View</label>
+        <div id="view-picker" class="avatar-options"></div>
         <label for="code">Room code</label>
         <input type="text" id="code" maxlength="64" placeholder="Leave empty to start a new room" />
         <button id="join-button" type="submit">Join</button>

@@ -5,6 +5,9 @@
 import { chromium } from 'playwright-core';
 
 const APP_URL = process.env.APP_URL ?? 'http://localhost:5173';
+const VIEW = process.env.VIEW ?? '2d'; // '2d' or '3d': which view to test
+// Software rendering in headless Chrome is slow, and several browsers share one CPU, so 3D tests use smaller windows.
+const VIEWPORT = VIEW === '3d' ? { width: 800, height: 500 } : { width: 1280, height: 720 };
 const SHOTS = process.env.SHOTS; // optional folder for screenshots
 const tag = () => Math.random().toString(36).slice(2, 8).toUpperCase();
 const ROOM = `WORLD-${tag()}`;
@@ -37,9 +40,9 @@ const browser = await chromium.launch({
 });
 
 async function join(name, room) {
-  const page = await (await browser.newContext({ viewport: { width: 1280, height: 720 } })).newPage();
+  const page = await (await browser.newContext({ viewport: VIEWPORT })).newPage();
   page.on('pageerror', (e) => console.log(`[${name}] page error:`, e.message));
-  await page.goto(`${APP_URL}/#${room}`);
+  await page.goto(`${APP_URL}/?view=${VIEW}#${room}`);
   await page.fill('#name', name);
   await page.click('#join-button');
   await page.waitForSelector('#room-info');

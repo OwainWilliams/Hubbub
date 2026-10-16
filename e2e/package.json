@@ -4,7 +4,9 @@
   "version": "0.0.1",
   "type": "module",
   "scripts": {
-    "test": "node two-peers.mjs && node avatars.mjs && node world-places.mjs && node voice.mjs && node screenshare.mjs && node resilience.mjs && node room-limits.mjs"
+    "test": "npm run test:2d && npm run test:3d && node room-limits.mjs",
+    "test:2d": "VIEW=2d node two-peers.mjs && VIEW=2d node avatars.mjs && VIEW=2d node world-places.mjs && VIEW=2d node voice.mjs && VIEW=2d node screenshare.mjs && VIEW=2d node resilience.mjs",
+    "test:3d": "VIEW=3d node two-peers.mjs && VIEW=3d node avatars.mjs && VIEW=3d node world-places.mjs && VIEW=3d node voice.mjs && VIEW=3d node screenshare.mjs && VIEW=3d node resilience.mjs"
   },
   "devDependencies": {
     "playwright-core": "1.49.1"

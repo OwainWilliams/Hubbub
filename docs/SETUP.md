@@ -41,15 +41,16 @@ I could not test TURN myself (it needs your Cloudflare keys), and I am not certa
 
 ## 5. Art
 
-The town and avatars are drawn from simple shapes. To use real art:
-- **Buildings and props (Kenney, CC0):** replace `app/src/game/art.ts`; keep the exported `drawChunk` and `drawInterior`.
-- **Avatars (LPC):** replace the drawing in `app/src/avatar/svg.ts` and the part lists in `look.ts`. Keep `Look` as five small numbers, or extend the wire format in `docs/protocol.md` and the Worker's `cleanLook`.
+The town and avatars are drawn from simple shapes in both views. To use real art:
+- **3D town and people (for example Kenney's CC0 3D kits):** `app/src/game/three/chunkMesh.ts`, `interiorMesh.ts` and `avatarMesh.ts`. See [3d.md](3d.md).
+- **2D town (Kenney tiles):** `app/src/game/phaser/art.ts`; keep the exported `drawChunk` and `drawInterior`.
+- **2D avatars (LPC):** the drawing in `app/src/avatar/svg.ts` and the part lists in `look.ts`. Keep `Look` as five small numbers, or extend the wire format in `docs/protocol.md` and the Worker's `cleanLook`.
 - Record every asset and its licence in `docs/ASSET-CREDITS.md` and the in-app Credits screen. LPC art needs credit and is share-alike.
 
 ## Running the tests
 
 ```
-cd app && npm test                 # 59 unit tests
+cd app && npm test                 # unit tests
 cd e2e && npm install
-CHROMIUM=/path/to/chromium npm test   # needs `npm run dev` running in worker/ and app/
+CHROMIUM=/path/to/chromium npm test   # both views; npm run test:2d or test:3d for one. Needs `npm run dev` running in worker/ and app/
 ```

@@ -127,6 +127,11 @@ export class Hud {
     el.hidden = false;
   }
 
+  /** The line of help text under the chat box. */
+  setHint(text: string): void {
+    document.getElementById('hint')!.textContent = text;
+  }
+
   setMic(state: 'off' | 'on' | 'muted'): void {
     const b = document.getElementById('mic') as HTMLButtonElement;
     b.dataset.state = state;

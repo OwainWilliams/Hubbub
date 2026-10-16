@@ -5,6 +5,9 @@
 import { chromium } from 'playwright-core';
 
 const APP_URL = process.env.APP_URL ?? 'http://localhost:5173';
+const VIEW = process.env.VIEW ?? '2d'; // '2d' or '3d': which view to test
+// Software rendering in headless Chrome is slow, and several browsers share one CPU, so 3D tests use smaller windows.
+const VIEWPORT = VIEW === '3d' ? { width: 800, height: 500 } : { width: 1000, height: 700 };
 const WORKER = process.env.WORKER_URL ?? 'http://localhost:8787';
 const ROOM = `RESIL-${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
 
@@ -36,9 +39,9 @@ const browser = await chromium.launch({
 const hook = (page, fn, ...args) => page.evaluate(([f, a]) => window.__hubbub[f](...a), [fn, args]);
 
 async function join(name) {
-  const page = await (await browser.newContext({ viewport: { width: 1000, height: 700 } })).newPage();
+  const page = await (await browser.newContext({ viewport: VIEWPORT })).newPage();
   page.on('pageerror', (e) => console.log(`[${name}] page error:`, e.message));
-  await page.goto(`${APP_URL}/#${ROOM}`);
+  await page.goto(`${APP_URL}/?view=${VIEW}#${ROOM}`);
   await page.fill('#name', name);
   await page.click('#join-button');
   await page.waitForSelector('#room-info');
@@ -77,11 +80,26 @@ try {
   await hook(alice, 'teleport', 200, 64);
   await sleep(500);
   const start = (await hook(alice, 'positions')).me;
-  await alice.mouse.click(500 + 160, 350); // the player is centred on screen; this is 160px to the right
-  await sleep(1500);
-  const end = (await hook(alice, 'positions')).me;
-  check(Math.abs(end.x - (start.x + 160)) < 25 && Math.abs(end.y - start.y) < 25, `clicking 160px to the right walks there (moved ${Math.round(end.x - start.x)}px)`);
-  // Clicking into a wall stops instead of pushing forever.
+  const vp = alice.viewportSize();
+  const cx = vp.width / 2;
+  const cy = vp.height / 2;
+  if (VIEW === '2d') {
+    // The player is centred on screen and one screen pixel is one world pixel, so 160px right is 160px of walking.
+    await alice.mouse.click(cx + 160, cy);
+    await sleep(1500);
+    const end = (await hook(alice, 'positions')).me;
+    check(Math.abs(end.x - (start.x + 160)) < 25 && Math.abs(end.y - start.y) < 25, `clicking 160px to the right walks there (moved ${Math.round(end.x - start.x)}px)`);
+  } else {
+    // In 3D the screen is a perspective view, so the distance depends on the camera. Click well to the right of
+    // the player, on the street, and check they walk that way and stop at the spot instead of carrying on.
+    await alice.mouse.click(cx + 150, cy + 40);
+    await sleep(3000);
+    const end = (await hook(alice, 'positions')).me;
+    check(end.x - start.x > 60 && Math.abs(end.y - start.y) < 120, `clicking to the right walks right (moved ${Math.round(end.x - start.x)}px across, ${Math.round(end.y - start.y)}px down)`);
+    await sleep(600);
+    const later = (await hook(alice, 'positions')).me;
+    check(Math.hypot(later.x - end.x, later.y - end.y) < 3, 'and they stop when they get there');
+  }
   await alice.keyboard.press('Escape');
 
   // 3. Flooding the signalling socket is cut off.
@@ -103,6 +121,7 @@ try {
   // 4. Losing the server: the page says so and rejoins by itself, and the room sees one person leave and return.
   const carasView = async () => Object.keys(await hook(cara, 'statuses')).join(',');
   check((await carasView()).includes('Bob'), 'Cara can see Bob before the drop');
+  await bob.evaluate(() => { window.__marker = 1; });
   await hook(bob, 'dropServer');
   const banner = await bob.waitForSelector('#banner:not([hidden])', { timeout: 3000 }).then(() => true, () => false);
   check(banner, 'Bob sees a banner saying the connection was lost');
@@ -110,18 +129,23 @@ try {
     await waitFor(async () => !(await carasView()).includes('Bob'), 'Cara sees Bob leave', 8000),
     'the others see Bob leave the room',
   );
-  // After a short pause the page reloads and joins again on its own.
+  // After a short pause the page reloads and joins again on its own. A marker set before the drop disappears
+  // when the page reloads, which tells the new page from the old one.
   check(
     await waitFor(async () => {
       try {
-        return (await bob.locator('#room-info').isVisible()) && (await allConnected(bob, 2)());
+        const reloaded = await bob.evaluate(() => window.__marker === undefined && typeof window.__hubbub === 'object');
+        return reloaded && (await bob.locator('#room-info').isVisible()) && (await allConnected(bob, 2)());
       } catch {
         return false; // the page is mid-reload
       }
     }, 'Bob rejoined', 25000),
     'Bob rejoins by himself and is connected to both of them again',
   );
-  check(await waitFor(async () => (await carasView()).includes('Bob'), 'Cara sees Bob return'), 'Cara sees Bob come back');
+  check(
+    await waitFor(async () => (await hook(cara, 'statuses')).Bob === 'connected', 'Cara connected to the new Bob'),
+    'Cara is connected to Bob again (not just told he arrived)',
+  );
   await say(bob, 'back again');
   check(await waitFor(async () => (await cara.locator('#chat-log').innerText()).includes('back again'), 'chat after rejoin'), 'and chat works after the rejoin');
 } finally {

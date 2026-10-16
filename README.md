@@ -2,7 +2,7 @@
 
 A browser-based meeting town in 2D for coworkers and friends. Up to 12 people walk around a generated town, chat by text and proximity voice, and meet in private buildings with live screen sharing. Rooms exist only while someone is in them. Designed to be free to host.
 
-First-time setup: [docs/SETUP.md](docs/SETUP.md). Plan and decisions: [docs/build-plan.md](docs/build-plan.md). Asset credits: [docs/ASSET-CREDITS.md](docs/ASSET-CREDITS.md).
+First-time setup: [docs/SETUP.md](docs/SETUP.md). Plan and decisions: [docs/build-plan.md](docs/build-plan.md). The 3D view: [docs/3d.md](docs/3d.md). Asset credits: [docs/ASSET-CREDITS.md](docs/ASSET-CREDITS.md).
 
 ## Layout
 
@@ -74,4 +74,5 @@ Secrets survive redeploys. Without them the app uses STUN only.
 - Phase 5 (proximity voice) and Phase 6 (screen sharing): built and tested with real browsers using a fake microphone and a fake screen. Browsers' real screen picker and real speakers could not be tested automatically.
 - Phase 2 (avatars): a builder on the join screen (kind, hat, robe, skin, extras), remembered in the browser and shown to everyone, with facing and a walking bob. The drawing is placeholder SVG in `app/src/avatar/`; replacing it with layered LPC sprites only touches that folder.
 - Phase 7 (reliability and polish): broken peer links reconnect by themselves, a dropped server connection rejoins automatically, rate limits on the server and between people, click or tap to walk, a phone layout (text chat, tap to walk and watching a shared screen; no mic or sharing on phones).
+- 3D view: the same town and game in three.js with an orbiting third-person camera, chosen on the join screen. See [docs/3d.md](docs/3d.md).
 - Still to do: swap the placeholder art for Kenney and LPC packs, try it across real networks (with TURN), and a credits screen generated from the licence list.

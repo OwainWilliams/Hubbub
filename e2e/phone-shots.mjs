@@ -2,12 +2,13 @@
 //   CHROMIUM=/path/to/chromium SHOTS=/some/dir node phone-shots.mjs
 import { chromium } from 'playwright-core';
 const APP_URL = process.env.APP_URL ?? 'http://localhost:5173';
+const VIEW = process.env.VIEW ?? '2d'; // '2d' or '3d': which view to test
 const SHOTS = process.env.SHOTS ?? '.';
 const ROOM = `PHONE-${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
 const browser = await chromium.launch({ executablePath: process.env.CHROMIUM, headless: true, args: ['--use-gl=swiftshader', '--enable-unsafe-swiftshader', '--disable-features=WebRtcHideLocalIpsWithMdns'] });
 const phone = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, deviceScaleFactor: 2 });
 const p = await phone.newPage();
-await p.goto(`${APP_URL}/#${ROOM}`);
+await p.goto(`${APP_URL}/?view=${VIEW}#${ROOM}`);
 await p.fill('#name', 'Pip');
 await p.screenshot({ path: `${SHOTS}/phone-join.png` });
 const canScroll = await p.evaluate(() => { const j = document.getElementById('join'); return j.scrollHeight > j.clientHeight; });

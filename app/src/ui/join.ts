@@ -1,4 +1,5 @@
 import { defaultLook, parseLook, randomLook, type Look } from '../avatar/look';
+import { initialView, type View } from '../game/view';
 import { WORKER_URL } from '../net/config';
 import { cleanName } from '../net/protocol';
 import { normaliseRoomCode, randomRoomCode } from '../util/roomCode';
@@ -8,6 +9,7 @@ export interface JoinChoice {
   name: string;
   look: Look;
   code: string;
+  view: View;
 }
 
 function load(key: string): string | null {
@@ -47,6 +49,26 @@ export function initJoin(onJoin: (c: JoinChoice) => Promise<void>): void {
   }
   const picker = mountAvatarPicker(document.getElementById('avatar-picker')!, saved, () => {});
 
+  let view: View = initialView(location.search, load('hubbub.view'), window.matchMedia('(pointer: coarse)').matches);
+  const viewBox = document.getElementById('view-picker')!;
+  const paintView = () => {
+    viewBox.replaceChildren(
+      ...(['3d', '2d'] as const).map((v) => {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'chip';
+        b.textContent = v === '3d' ? '3D' : '2D';
+        b.setAttribute('aria-pressed', String(v === view));
+        b.onclick = () => {
+          view = v;
+          paintView();
+        };
+        return b;
+      }),
+    );
+  };
+  paintView();
+
   // After a dropped server connection the page reloads itself; join again without asking.
   let autoRejoin = false;
   try {
@@ -81,11 +103,12 @@ export function initJoin(onJoin: (c: JoinChoice) => Promise<void>): void {
     save('hubbub.name', name);
     const look = picker.get();
     save('hubbub.look', JSON.stringify(look));
+    save('hubbub.view', view);
 
     button.disabled = true;
     button.textContent = 'Joining…';
     try {
-      await onJoin({ name, look, code });
+      await onJoin({ name, look, code, view });
       root.hidden = true;
     } catch (err) {
       errorEl.textContent = err instanceof Error ? err.message : 'Could not join.';

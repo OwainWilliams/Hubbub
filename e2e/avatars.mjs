@@ -5,6 +5,9 @@
 import { chromium } from 'playwright-core';
 
 const APP_URL = process.env.APP_URL ?? 'http://localhost:5173';
+const VIEW = process.env.VIEW ?? '2d'; // '2d' or '3d': which view to test
+// Software rendering in headless Chrome is slow, and several browsers share one CPU, so 3D tests use smaller windows.
+const VIEWPORT = VIEW === '3d' ? { width: 800, height: 500 } : { width: 1280, height: 800 };
 const SHOTS = process.env.SHOTS;
 const ROOM = `LOOK-${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
 
@@ -36,10 +39,10 @@ const browser = await chromium.launch({
 const hook = (page, fn, ...args) => page.evaluate(([f, a]) => window.__hubbub[f](...a), [fn, args]);
 
 try {
-  const ctxA = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+  const ctxA = await browser.newContext({ viewport: VIEWPORT });
   const alice = await ctxA.newPage();
   alice.on('pageerror', (e) => console.log('[Alice] page error:', e.message));
-  await alice.goto(`${APP_URL}/#${ROOM}`);
+  await alice.goto(`${APP_URL}/?view=${VIEW}#${ROOM}`);
   await alice.fill('#name', 'Alice');
 
   // Build a distinctive look: a dwarf with a helm, plum robe, tan skin and a beard.
@@ -55,8 +58,8 @@ try {
   await alice.click('#join-button');
   await alice.waitForSelector('#room-info');
 
-  const bob = await (await browser.newContext({ viewport: { width: 1280, height: 800 } })).newPage();
-  await bob.goto(`${APP_URL}/#${ROOM}`);
+  const bob = await (await browser.newContext({ viewport: VIEWPORT })).newPage();
+  await bob.goto(`${APP_URL}/?view=${VIEW}#${ROOM}`);
   await bob.fill('#name', 'Bob');
   await bob.click('.avatar-row button:has-text("Troll")');
   await bob.click('.avatar-row button:has-text("Bowler")');
