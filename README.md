@@ -34,6 +34,7 @@ The app reads the Worker address from `VITE_WORKER_URL` (default `http://localho
 **Worker (Cloudflare):**
 ```sh
 cd worker
+npm install
 npx wrangler login
 npm run deploy
 ```
