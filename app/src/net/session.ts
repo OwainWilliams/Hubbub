@@ -1,5 +1,5 @@
 import { WORKER_URL } from './config';
-import { PeerManager } from './peers';
+import { PeerManager, type LinkStats, type MediaKind } from './peers';
 import { MAX_PEERS, type ChatMsg, type PeerInfo, type ServerMsg, type StateMsg } from './protocol';
 import { Signalling } from './signalling';
 
@@ -42,6 +42,9 @@ export function roomUrl(code: string): string {
 export class Session {
   readonly handlers: SessionHandlers = {};
   readonly roster = new Map<string, RosterEntry>();
+
+  /** Extra listeners for link changes (voice and screen sharing use these; the game scene uses handlers.linkChanged). */
+  readonly linkListeners: Array<(id: string, status: LinkStatus) => void> = [];
 
   private seq = 0;
   /** Where we are: '' outdoors, otherwise a building id. Set it with setPlace. */
@@ -123,6 +126,7 @@ export class Session {
     if (!entry || entry.status === status) return;
     entry.status = status;
     this.handlers.linkChanged?.(id, status);
+    for (const fn of this.linkListeners) fn(id, status);
   }
 
   private onPeerState(id: string, m: StateMsg): void {
@@ -143,6 +147,23 @@ export class Session {
   /** Chat only goes to people in the same place as us, so what is said inside a building stays inside. */
   sendChat(text: string): void {
     this.peers.broadcastChat({ t: 'c', text }, (id) => this.roster.get(id)?.place === this.place);
+  }
+
+  /** Voice and video slots, see PeerLink. */
+  setOutgoing(id: string, kind: MediaKind, track: MediaStreamTrack | null): Promise<boolean> {
+    return this.peers.setOutgoing(id, kind, track);
+  }
+
+  setVideoBitrate(id: string, bitsPerSecond: number): Promise<void> {
+    return this.peers.setVideoBitrate(id, bitsPerSecond);
+  }
+
+  incoming(id: string, kind: MediaKind): MediaStreamTrack | null {
+    return this.peers.incoming(id, kind);
+  }
+
+  stats(id: string): Promise<LinkStats | null> {
+    return this.peers.stats(id);
   }
 
   leave(): void {

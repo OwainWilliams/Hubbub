@@ -4,6 +4,7 @@ import type { Hud } from '../ui/hud';
 import { CHUNK, TILE, checksumChunk, type Building } from '../world/generate';
 import { I, generateInterior, interiorBlocked, interiorTile, type Interior } from '../world/interior';
 import { hashString } from '../world/rng';
+import { Voice, type Where } from '../voice/voice';
 import { World } from '../world/world';
 import { drawChunk, drawInterior, type ChunkArt, type InteriorArt } from './art';
 import { COLLIDE_RADIUS, PLAYER_RADIUS, smoothToward, stepPosition } from './movement';
@@ -12,10 +13,13 @@ const SEND_INTERVAL_MS = 66; // about 15 updates per second
 const BUBBLE_MS = 6000;
 const CHUNK_PX = CHUNK * TILE;
 const UNLOAD_MARGIN = 1;
+const VOICE_TICK_MS = 100;
 
 interface Avatar {
   box: Phaser.GameObjects.Container;
   bubble: Phaser.GameObjects.Text;
+  /** Green ring shown while this person is talking. */
+  ring: Phaser.GameObjects.Arc;
   bubbleTimer?: Phaser.Time.TimerEvent;
 }
 
@@ -42,6 +46,9 @@ export class GameScene extends Phaser.Scene {
   private lastSent = 0;
   private sentX = NaN;
   private sentY = NaN;
+
+  private voice!: Voice;
+  private lastVoiceTick = 0;
 
   private readonly chunks = new Map<string, ChunkArt>();
   private chunkX = NaN;
@@ -74,6 +81,7 @@ export class GameScene extends Phaser.Scene {
     this.keys = this.input.keyboard!.addKeys('W,A,S,D,UP,DOWN,LEFT,RIGHT', false) as Record<string, Phaser.Input.Keyboard.Key>;
     this.scale.on('resize', () => (this.interior ? this.frameInterior() : this.syncChunks(true)));
 
+    this.voice = new Voice(this.session);
     this.syncChunks(true);
     this.wireSession();
     this.wireHud();
@@ -249,11 +257,32 @@ export class GameScene extends Phaser.Scene {
       this.say(this.me, text);
       this.hud.chat(this.session.self.name, text, true);
     };
+    this.hud.onMic = () => void this.toggleMic();
+    document.addEventListener('keydown', (e) => {
+      if ((e.key === 'm' || e.key === 'M') && document.activeElement?.tagName !== 'INPUT' && this.voice.micOn) this.toggleMic();
+    });
     // Typing in the chat box must not walk the character around.
     this.hud.onFocusChange = (focused) => {
       this.input.keyboard!.enabled = !focused;
       if (focused) this.input.keyboard!.resetKeys();
     };
+  }
+
+  /** First press asks for the microphone. After that it mutes and unmutes. */
+  private async toggleMic(): Promise<void> {
+    try {
+      if (!this.voice.micOn) {
+        await this.voice.enable();
+        this.hud.setMic('on');
+        this.hud.system('Your microphone is on. People near you can hear you.');
+      } else {
+        this.voice.setMuted(!this.voice.isMuted);
+        this.hud.setMic(this.voice.isMuted ? 'muted' : 'on');
+      }
+    } catch (err) {
+      this.hud.system(err instanceof Error ? err.message : 'Could not start the microphone.');
+      this.hud.setMic('off');
+    }
   }
 
   private refreshRoster(): void {
@@ -276,6 +305,7 @@ export class GameScene extends Phaser.Scene {
       world: () => ({ seed: this.world.seed, checksum: checksumChunk(this.world.chunk(0, 0)), loaded: this.chunks.size }),
       doors: () => this.world.chunk(1, 0).buildings.filter((b) => b.enterable).map((b) => ({ id: b.id, name: b.name, x: (b.doorX + 1) * TILE, y: (b.doorY + 0.5) * TILE })),
       room: () => (this.interior ? { spawn: this.interior.spawn, door: { x: (this.interior.doorX + 1) * TILE, y: (this.interior.doorY + 0.5) * TILE }, w: this.interior.w * TILE, h: this.interior.h * TILE } : null),
+      voice: async () => ({ micOn: this.voice.micOn, muted: this.voice.isMuted, peers: await this.voice.debug() }),
       teleport: (x: number, y: number) => {
         this.x = x;
         this.y = y;
@@ -312,8 +342,9 @@ export class GameScene extends Phaser.Scene {
       })
       .setOrigin(0.5, 1)
       .setVisible(false);
-    const box = this.add.container(0, 0, [body, label, bubble]).setData('name', name);
-    return { box, bubble };
+    const ring = this.add.circle(0, 0, PLAYER_RADIUS + 6).setStrokeStyle(3, 0x6fbf73).setVisible(false);
+    const box = this.add.container(0, 0, [ring, body, label, bubble]).setData('name', name);
+    return { box, bubble, ring };
   }
 
   private say(a: Avatar, text: string): void {
@@ -352,6 +383,15 @@ export class GameScene extends Phaser.Scene {
       this.sentX = this.x;
       this.sentY = this.y;
       this.lastSent = time;
+    }
+
+    if (time - this.lastVoiceTick >= VOICE_TICK_MS) {
+      this.lastVoiceTick = time;
+      const others = new Map<string, Where>();
+      for (const [id, r] of this.remotes) if (r.seen) others.set(id, { x: r.tx, y: r.ty, place: r.place });
+      this.voice.update({ x: this.x, y: this.y, place: this.place }, others);
+      this.me.ring.setVisible(this.voice.isSpeaking('self'));
+      for (const [id, r] of this.remotes) r.avatar.ring.setVisible(this.voice.isSpeaking(id));
     }
 
     for (const r of this.remotes.values()) {

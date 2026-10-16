@@ -7,11 +7,25 @@ export interface PeerEvents {
   onChat(id: string, m: ChatMsg): void;
 }
 
+export type MediaKind = 'audio' | 'video';
+
+/** What has arrived from one person, read from WebRTC stats. Used by tests and the connection display. */
+export interface LinkStats {
+  audioBytes: number;
+  videoBytes: number;
+  videoFrames: number;
+  /** True when the browser is relaying this link through a TURN server rather than connecting directly. */
+  relayed: boolean;
+}
+
 /**
  * One RTCPeerConnection to one other person, with two pre-negotiated data channels:
  *   0 "state": unordered, no retransmits (positions: a late packet is useless)
  *   1 "chat":  ordered and reliable
  * Both sides create the same channels with fixed ids, so no extra channel negotiation is needed.
+ *
+ * Voice and screen sharing use one audio and one video transceiver, created in the first offer. Turning the
+ * mic or a screen share on or off just swaps the track in that slot (replaceTrack), so nothing is renegotiated.
  */
 class PeerLink {
   readonly pc: RTCPeerConnection;
@@ -51,6 +65,8 @@ class PeerLink {
 
   /** Called by the person who joined: they make the offer, so there is never a clash of two offers. */
   async makeOffer(): Promise<void> {
+    this.pc.addTransceiver('audio', { direction: 'sendrecv' });
+    this.pc.addTransceiver('video', { direction: 'sendrecv' });
     await this.pc.setLocalDescription();
     this.sendSignal({ kind: 'offer', sdp: this.pc.localDescription!.sdp });
   }
@@ -71,9 +87,58 @@ class PeerLink {
     this.remoteSet = true;
     for (const c of this.pending.splice(0)) await this.pc.addIceCandidate(c);
     if (data.kind === 'offer') {
+      // The offer brought an audio and a video slot with it. Use them in both directions.
+      for (const t of this.pc.getTransceivers()) if (t.direction !== 'sendrecv') t.direction = 'sendrecv';
       await this.pc.setLocalDescription();
       this.sendSignal({ kind: 'answer', sdp: this.pc.localDescription!.sdp });
     }
+  }
+
+  private transceiver(kind: MediaKind): RTCRtpTransceiver | undefined {
+    return this.pc.getTransceivers().find((t) => t.receiver.track.kind === kind);
+  }
+
+  /** Puts a track in our sending slot, or empties it with null. Resolves false if the slot does not exist yet. */
+  async setOutgoing(kind: MediaKind, track: MediaStreamTrack | null): Promise<boolean> {
+    const t = this.transceiver(kind);
+    if (!t || this.closed) return false;
+    await t.sender.replaceTrack(track);
+    return true;
+  }
+
+  /** Limits how much bandwidth this link may use for video. */
+  async setVideoBitrate(bitsPerSecond: number): Promise<void> {
+    const sender = this.transceiver('video')?.sender;
+    if (!sender) return;
+    const params = sender.getParameters();
+    if (!params.encodings?.length) params.encodings = [{}];
+    params.encodings[0].maxBitrate = bitsPerSecond;
+    await sender.setParameters(params);
+  }
+
+  /** The track their audio or video arrives on. It stays silent or black until they send something. */
+  incoming(kind: MediaKind): MediaStreamTrack | null {
+    return this.transceiver(kind)?.receiver.track ?? null;
+  }
+
+  async stats(): Promise<LinkStats> {
+    const out: LinkStats = { audioBytes: 0, videoBytes: 0, videoFrames: 0, relayed: false };
+    const report = await this.pc.getStats();
+    const byId = new Map<string, Record<string, unknown>>();
+    report.forEach((r) => byId.set(r.id as string, r as Record<string, unknown>));
+    report.forEach((r) => {
+      const s = r as Record<string, unknown>;
+      if (s.type === 'inbound-rtp' && s.kind === 'audio') out.audioBytes += Number(s.bytesReceived ?? 0);
+      if (s.type === 'inbound-rtp' && s.kind === 'video') {
+        out.videoBytes += Number(s.bytesReceived ?? 0);
+        out.videoFrames += Number(s.framesDecoded ?? 0);
+      }
+      if (s.type === 'candidate-pair' && s.nominated && s.state === 'succeeded') {
+        const local = byId.get(s.localCandidateId as string);
+        if (local?.candidateType === 'relay') out.relayed = true;
+      }
+    });
+    return out;
   }
 
   sendState(m: StateMsg): void {
@@ -131,6 +196,22 @@ export class PeerManager {
 
   remove(id: string): void {
     this.links.get(id)?.close();
+  }
+
+  setOutgoing(id: string, kind: MediaKind, track: MediaStreamTrack | null): Promise<boolean> {
+    return this.links.get(id)?.setOutgoing(kind, track) ?? Promise.resolve(false);
+  }
+
+  setVideoBitrate(id: string, bitsPerSecond: number): Promise<void> {
+    return this.links.get(id)?.setVideoBitrate(bitsPerSecond) ?? Promise.resolve();
+  }
+
+  incoming(id: string, kind: MediaKind): MediaStreamTrack | null {
+    return this.links.get(id)?.incoming(kind) ?? null;
+  }
+
+  async stats(id: string): Promise<LinkStats | null> {
+    return (await this.links.get(id)?.stats()) ?? null;
   }
 
   broadcastState(m: StateMsg): void {

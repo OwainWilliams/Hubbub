@@ -49,6 +49,11 @@
       #roster li small { grid-column: 2; color: var(--mute); }
       #roster li[data-status=failed] small { color: var(--brick); }
       #roster li[data-status=connected] small { color: var(--moss); }
+      #controls { left: 50%; bottom: 10px; transform: translateX(-50%); display: flex; gap: 8px; }
+      #controls button { background: var(--night); color: var(--paper); border: 1px solid var(--line); border-radius: 3px; padding: 7px 14px; cursor: pointer; }
+      #controls button[data-state=on] { border-color: var(--moss); color: #9fcf9a; }
+      #controls button[data-state=muted] { border-color: var(--brick); color: #e08a6b; }
+      #controls button[hidden] { display: none; }
       #chat-box { left: 10px; bottom: 10px; width: min(360px, calc(100% - 20px)); display: grid; gap: 6px; }
       #chat-log { max-height: 180px; overflow-y: auto; font-size: .9rem; }
       #chat-log p { margin: 0 0 3px; overflow-wrap: anywhere; }
@@ -57,7 +62,7 @@
       #chat-log .sys { color: var(--mute); font-style: italic; }
       #chat-input { background: var(--night); color: var(--paper); border: 1px solid var(--line); border-radius: 3px; padding: 8px 10px; width: 100%; }
       #hint { font-size: .75rem; color: var(--mute); margin: 0; }
-      @media (max-width: 720px) { #room-info { max-width: calc(100% - 20px); } #roster-box { top: 56px; } }
+      @media (max-width: 720px) { #controls { display: none; } #room-info { max-width: calc(100% - 20px); } #roster-box { top: 56px; } }
 
       /* credits */
       #credits-link { position: fixed; right: 12px; bottom: 8px; font-size: 12px; z-index: 10; }
@@ -96,6 +101,9 @@
       <div class="panel" id="roster-box">
         <h2><span>In the room</span><span id="roster-count"></span></h2>
         <ul id="roster"></ul>
+      </div>
+      <div class="panel" id="controls">
+        <button id="mic" type="button" data-state="off" title="Turn your microphone on (M to mute)">Mic off</button>
       </div>
       <div class="panel" id="chat-box">
         <div id="chat-log" aria-live="polite"></div>

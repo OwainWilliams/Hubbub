@@ -17,6 +17,7 @@ const STATUS_LABEL: Record<LinkStatus, string> = {
 /** DOM overlay: room info, roster and chat. Text is always set with textContent, never as HTML. */
 export class Hud {
   onSend: (text: string) => void = () => {};
+  onMic: () => void = () => {};
   onFocusChange: (focused: boolean) => void = () => {};
 
   private readonly root = document.getElementById('hud')!;
@@ -37,6 +38,8 @@ export class Hud {
       }
       window.setTimeout(() => (copy.textContent = 'Copy invite link'), 2500);
     };
+
+    (document.getElementById('mic') as HTMLButtonElement).onclick = () => this.onMic();
 
     const form = document.getElementById('chat-form') as HTMLFormElement;
     form.onsubmit = (e) => {
@@ -92,6 +95,13 @@ export class Hud {
       }),
     );
     document.getElementById('roster-count')!.textContent = `${lines.length} / 12`;
+  }
+
+  setMic(state: 'off' | 'on' | 'muted'): void {
+    const b = document.getElementById('mic') as HTMLButtonElement;
+    b.dataset.state = state;
+    b.textContent = state === 'off' ? 'Mic off' : state === 'on' ? 'Mic on' : 'Muted';
+    b.setAttribute('aria-pressed', String(state === 'on'));
   }
 
   /** Shows where you are, e.g. "Outside, square 0,0" or "Inside The Damp Lantern". */
