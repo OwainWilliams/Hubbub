@@ -1,0 +1,12 @@
+{
+  "name": "hubbub-e2e",
+  "private": true,
+  "version": "0.0.1",
+  "type": "module",
+  "scripts": {
+    "test": "node two-peers.mjs && node room-limits.mjs"
+  },
+  "devDependencies": {
+    "playwright-core": "1.49.1"
+  }
+}

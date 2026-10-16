@@ -5,18 +5,105 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Hubbub</title>
     <style>
-      html, body { margin: 0; height: 100%; background: #14181f; color: #e8dcc0; font-family: system-ui, sans-serif; }
+      :root {
+        --ink: #14181f; --night: #1d2733; --line: #3a4a5b; --paper: #e8dcc0; --mute: #9aa7b2; --ochre: #d9a441; --moss: #5f7a5a; --brick: #a9573b;
+        color-scheme: dark;
+      }
+      * { box-sizing: border-box; }
+      html, body { margin: 0; height: 100%; background: var(--ink); color: var(--paper); font-family: system-ui, sans-serif; }
+      button, input { font: inherit; }
+      button:focus-visible, input:focus-visible { outline: 2px solid var(--ochre); outline-offset: 2px; }
       #game { position: fixed; inset: 0; }
-      #credits-link { position: fixed; right: 12px; bottom: 8px; font-size: 12px; color: #9aa7b2; }
-      #credits-link a { color: inherit; }
-      #credits { position: fixed; inset: 0; background: rgba(20,24,31,.96); padding: 24px; overflow: auto; display: none; }
+
+      /* join */
+      #join { position: fixed; inset: 0; display: grid; place-items: center; padding: 16px; background: var(--ink); z-index: 20; }
+      #join[hidden] { display: none; }
+      #join-form { width: min(420px, 100%); display: grid; gap: 6px; }
+      #join h1 { margin: 0; font: 700 3rem Georgia, serif; color: var(--ochre); }
+      #join p.sub { margin: 0 0 12px; color: var(--mute); }
+      label { font-size: .8rem; letter-spacing: .08em; text-transform: uppercase; color: var(--mute); margin-top: 10px; }
+      input[type=text] { background: var(--night); color: var(--paper); border: 1px solid var(--line); border-radius: 3px; padding: 10px 12px; width: 100%; }
+      #swatches { display: flex; gap: 8px; }
+      .sw { width: 32px; height: 32px; border-radius: 50%; border: 2px solid var(--line); cursor: pointer; padding: 0; }
+      .sw[aria-pressed=true] { border-color: var(--paper); box-shadow: 0 0 0 2px var(--ochre); }
+      #join-button { margin-top: 14px; background: var(--ochre); color: var(--ink); border: 0; border-radius: 3px; padding: 11px 18px; font-weight: 700; cursor: pointer; }
+      #join-button:disabled { opacity: .6; cursor: default; }
+      #join-error { color: #e08a6b; min-height: 1.3em; margin: 4px 0 0; }
+      #server-status { font-size: .85rem; color: var(--mute); }
+      #server-status[data-ok=true] { color: var(--moss); }
+      #server-status[data-ok=false] { color: var(--brick); }
+
+      /* in-room overlay */
+      #hud[hidden] { display: none; }
+      .panel { position: fixed; background: rgba(20,24,31,.9); border: 1px solid var(--line); border-radius: 4px; padding: 8px 10px; z-index: 10; }
+      #room-info { top: 10px; left: 10px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; max-width: calc(100% - 230px); }
+      #room-code { font: 700 1rem Georgia, serif; color: var(--ochre); letter-spacing: .05em; }
+      #copy-link { background: transparent; color: var(--paper); border: 1px solid var(--line); border-radius: 3px; padding: 4px 10px; cursor: pointer; }
+      #roster-box { top: 10px; right: 10px; width: 200px; font-size: .85rem; }
+      #roster-box h2 { margin: 0 0 6px; font-size: .75rem; letter-spacing: .08em; text-transform: uppercase; color: var(--mute); font-weight: 500; display: flex; justify-content: space-between; }
+      #roster { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+      #roster li { display: grid; grid-template-columns: 12px 1fr; column-gap: 6px; align-items: center; }
+      #roster li i { width: 10px; height: 10px; border-radius: 50%; border: 1px solid var(--ink); }
+      #roster li span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      #roster li small { grid-column: 2; color: var(--mute); }
+      #roster li[data-status=failed] small { color: var(--brick); }
+      #roster li[data-status=connected] small { color: var(--moss); }
+      #chat-box { left: 10px; bottom: 10px; width: min(360px, calc(100% - 20px)); display: grid; gap: 6px; }
+      #chat-log { max-height: 180px; overflow-y: auto; font-size: .9rem; }
+      #chat-log p { margin: 0 0 3px; overflow-wrap: anywhere; }
+      #chat-log .who { color: var(--ochre); font-weight: 700; }
+      #chat-log .who.me { color: var(--paper); }
+      #chat-log .sys { color: var(--mute); font-style: italic; }
+      #chat-input { background: var(--night); color: var(--paper); border: 1px solid var(--line); border-radius: 3px; padding: 8px 10px; width: 100%; }
+      #hint { font-size: .75rem; color: var(--mute); margin: 0; }
+      @media (max-width: 720px) { #room-info { max-width: calc(100% - 20px); } #roster-box { top: 56px; } }
+
+      /* credits */
+      #credits-link { position: fixed; right: 12px; bottom: 8px; font-size: 12px; z-index: 10; }
+      #credits-link a { color: var(--mute); }
+      #credits { position: fixed; inset: 0; background: rgba(20,24,31,.97); padding: 24px; overflow: auto; display: none; z-index: 30; }
       #credits.open { display: block; }
       #credits h1 { margin-top: 0; }
-      #credits button { font: inherit; padding: 6px 14px; }
+      #credits button { padding: 6px 14px; }
     </style>
   </head>
   <body>
     <div id="game"></div>
+
+    <div id="join">
+      <form id="join-form" autocomplete="off">
+        <h1>Hubbub</h1>
+        <p class="sub">A little town to wander around and chat in.</p>
+        <label for="name">Your name</label>
+        <input type="text" id="name" maxlength="24" placeholder="e.g. Mortimer" />
+        <label>Your colour</label>
+        <div id="swatches"></div>
+        <label for="code">Room code</label>
+        <input type="text" id="code" maxlength="64" placeholder="Leave empty to start a new room" />
+        <button id="join-button" type="submit">Join</button>
+        <p id="join-error" role="alert"></p>
+        <span id="server-status">Checking server…</span>
+      </form>
+    </div>
+
+    <div id="hud" hidden>
+      <div class="panel" id="room-info">
+        <span>Room <span id="room-code"></span></span>
+        <button id="copy-link" type="button">Copy invite link</button>
+      </div>
+      <div class="panel" id="roster-box">
+        <h2><span>In the room</span><span id="roster-count"></span></h2>
+        <ul id="roster"></ul>
+      </div>
+      <div class="panel" id="chat-box">
+        <div id="chat-log" aria-live="polite"></div>
+        <form id="chat-form" autocomplete="off">
+          <input id="chat-input" type="text" maxlength="200" placeholder="Say something (Enter to type)" aria-label="Chat message" />
+        </form>
+        <p id="hint">Move with WASD or the arrow keys. Press Esc to leave the chat box.</p>
+      </div>
+    </div>
+
     <div id="credits-link"><a href="#credits" id="open-credits">Credits</a></div>
     <div id="credits" role="dialog" aria-label="Credits">
       <h1>Credits</h1>

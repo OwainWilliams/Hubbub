@@ -1,9 +1,16 @@
-export { Room } from './room';
+import type { Env } from './env';
 
-export interface Env {
-  ROOMS: DurableObjectNamespace;
-  /** Comma-separated origins allowed to call the Worker, e.g. https://thesecretstage.vip. Unset allows any. */
-  ALLOWED_ORIGIN?: string;
+export { Room } from './room';
+export type { Env };
+
+const LOCAL_DEV = /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/;
+
+/** True when the request's Origin may use this Worker. With ALLOWED_ORIGIN unset, everything is allowed. */
+function originAllowed(request: Request, env: Env): boolean {
+  if (!env.ALLOWED_ORIGIN) return true;
+  const origin = request.headers.get('origin') ?? '';
+  const allowed = env.ALLOWED_ORIGIN.split(',').map((o) => o.trim());
+  return allowed.includes(origin) || LOCAL_DEV.test(origin);
 }
 
 function cors(request: Request, env: Env): HeadersInit {
@@ -13,11 +20,32 @@ function cors(request: Request, env: Env): HeadersInit {
     vary: 'origin',
   };
   if (!env.ALLOWED_ORIGIN) return { ...base, 'access-control-allow-origin': '*' };
-
   const origin = request.headers.get('origin') ?? '';
-  const allowed = env.ALLOWED_ORIGIN.split(',').map((o) => o.trim());
-  const isLocalDev = /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin);
-  return allowed.includes(origin) || isLocalDev ? { ...base, 'access-control-allow-origin': origin } : base;
+  return originAllowed(request, env) ? { ...base, 'access-control-allow-origin': origin } : base;
+}
+
+/** STUN always; Cloudflare TURN credentials too when the secrets are set. Failures fall back to STUN only. */
+async function iceServers(env: Env): Promise<unknown[]> {
+  const servers: unknown[] = [{ urls: ['stun:stun.cloudflare.com:3478'] }];
+  if (!env.TURN_KEY_ID || !env.TURN_API_TOKEN) return servers;
+  try {
+    const res = await fetch(`https://rtc.live.cloudflare.com/v1/turn/keys/${env.TURN_KEY_ID}/credentials/generate`, {
+      method: 'POST',
+      headers: { authorization: `Bearer ${env.TURN_API_TOKEN}`, 'content-type': 'application/json' },
+      body: JSON.stringify({ ttl: 86400 }),
+    });
+    if (!res.ok) return servers;
+    const body = (await res.json()) as { iceServers?: unknown };
+    const extra = Array.isArray(body.iceServers) ? body.iceServers : body.iceServers ? [body.iceServers] : [];
+    for (const s of extra as { urls?: string | string[] }[]) {
+      // Browsers block TURN on port 53, so drop those URLs.
+      const urls = ([] as string[]).concat(s.urls ?? []).filter((u) => !/:53(\?|$)/.test(u));
+      if (urls.length) servers.push({ ...s, urls });
+    }
+  } catch {
+    // Keep STUN only.
+  }
+  return servers;
 }
 
 export default {
@@ -32,9 +60,14 @@ export default {
       return Response.json({ ok: true, service: 'hubbub-signal' }, { headers: cors(request, env) });
     }
 
-    // Phase 1: WebSocket upgrade at /room/<code> is routed to that room's Durable Object.
+    if (url.pathname === '/ice') {
+      return Response.json({ iceServers: await iceServers(env) }, { headers: cors(request, env) });
+    }
+
+    // WebSocket upgrade at /room/<code> is routed to that room's Durable Object.
     const match = url.pathname.match(/^\/room\/([A-Za-z0-9-]{3,64})$/);
     if (match) {
+      if (!originAllowed(request, env)) return new Response('Forbidden', { status: 403 });
       const id = env.ROOMS.idFromName(match[1].toUpperCase());
       return env.ROOMS.get(id).fetch(request);
     }
