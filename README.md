@@ -38,7 +38,7 @@ npm install
 npx wrangler login
 npm run deploy
 ```
-After deploying, optionally set `ALLOWED_ORIGIN` (for example `https://<your-username>.github.io`) as a Worker variable to restrict cross-origin access.
+Browser access is restricted by `ALLOWED_ORIGIN` in `worker/wrangler.toml` (currently `https://thesecretstage.vip`; use a comma-separated list for more than one). `localhost` is always allowed for development. The app is published at https://thesecretstage.vip/hubbub/.
 
 ## Status
 

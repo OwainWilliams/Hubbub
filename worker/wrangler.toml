@@ -10,3 +10,7 @@ class_name = "Room"
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["Room"]
+
+# Only the deployed site (and localhost during development) may call this Worker from a browser.
+[vars]
+ALLOWED_ORIGIN = "https://thesecretstage.vip"
