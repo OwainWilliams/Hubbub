@@ -38,6 +38,7 @@
       .panel { position: fixed; background: rgba(20,24,31,.9); border: 1px solid var(--line); border-radius: 4px; padding: 8px 10px; z-index: 10; }
       #room-info { top: 10px; left: 10px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; max-width: calc(100% - 230px); }
       #room-code { font: 700 1rem Georgia, serif; color: var(--ochre); letter-spacing: .05em; }
+      #place { color: var(--mute); font-size: .85rem; }
       #copy-link { background: transparent; color: var(--paper); border: 1px solid var(--line); border-radius: 3px; padding: 4px 10px; cursor: pointer; }
       #roster-box { top: 10px; right: 10px; width: 200px; font-size: .85rem; }
       #roster-box h2 { margin: 0 0 6px; font-size: .75rem; letter-spacing: .08em; text-transform: uppercase; color: var(--mute); font-weight: 500; display: flex; justify-content: space-between; }
@@ -90,6 +91,7 @@
       <div class="panel" id="room-info">
         <span>Room <span id="room-code"></span></span>
         <button id="copy-link" type="button">Copy invite link</button>
+        <span id="place"></span>
       </div>
       <div class="panel" id="roster-box">
         <h2><span>In the room</span><span id="roster-count"></span></h2>

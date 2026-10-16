@@ -4,6 +4,8 @@ export interface RosterLine {
   name: string;
   color: string;
   status: LinkStatus;
+  /** Where they are, e.g. "in The Damp Lantern". Empty when outdoors. */
+  where?: string;
 }
 
 const STATUS_LABEL: Record<LinkStatus, string> = {
@@ -84,12 +86,17 @@ export class Hud {
         const name = document.createElement('span');
         name.textContent = l.name;
         const status = document.createElement('small');
-        status.textContent = STATUS_LABEL[l.status];
+        status.textContent = l.where ? `${STATUS_LABEL[l.status]} · ${l.where}` : STATUS_LABEL[l.status];
         li.append(dot, name, status);
         return li;
       }),
     );
     document.getElementById('roster-count')!.textContent = `${lines.length} / 12`;
+  }
+
+  /** Shows where you are, e.g. "Outside, square 0,0" or "Inside The Damp Lantern". */
+  setPlace(text: string): void {
+    document.getElementById('place')!.textContent = text;
   }
 
   private append(row: HTMLElement): void {

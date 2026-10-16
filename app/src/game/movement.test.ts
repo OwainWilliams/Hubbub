@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { PLAYER_RADIUS, SPEED, WORLD, smoothToward, stepPosition } from './movement';
+import { SPEED, smoothToward, stepPosition } from './movement';
 
 describe('stepPosition', () => {
   it('moves at SPEED in a straight line', () => {
@@ -9,13 +9,18 @@ describe('stepPosition', () => {
     const p = stepPosition(500, 500, 1, 1, 1);
     expect(Math.hypot(p.x - 500, p.y - 500)).toBeCloseTo(SPEED);
   });
-  it('stays inside the world', () => {
-    expect(stepPosition(PLAYER_RADIUS, PLAYER_RADIUS, -1, -1, 10)).toEqual({ x: PLAYER_RADIUS, y: PLAYER_RADIUS });
-    const far = stepPosition(WORLD.width, WORLD.height, 1, 1, 10);
-    expect(far).toEqual({ x: WORLD.width - PLAYER_RADIUS, y: WORLD.height - PLAYER_RADIUS });
-  });
   it('stands still with no input', () => {
-    expect(stepPosition(10 + PLAYER_RADIUS, 20 + PLAYER_RADIUS, 0, 0, 1)).toEqual({ x: 10 + PLAYER_RADIUS, y: 20 + PLAYER_RADIUS });
+    expect(stepPosition(10, 20, 0, 0, 1)).toEqual({ x: 10, y: 20 });
+  });
+  it('is stopped by a wall', () => {
+    const wall = (x: number) => x >= 600;
+    expect(stepPosition(590, 100, 1, 0, 1, (x) => wall(x))).toEqual({ x: 590, y: 100 });
+  });
+  it('slides along a wall when moving diagonally into it', () => {
+    const wall = (x: number) => x >= 600;
+    const p = stepPosition(590, 100, 1, 1, 0.1, (x) => wall(x));
+    expect(p.x).toBe(590);
+    expect(p.y).toBeGreaterThan(100);
   });
 });
 

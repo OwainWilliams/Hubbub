@@ -24,13 +24,20 @@ export type ClientMsg =
   | { type: 'hello'; name: string; color: string }
   | { type: 'signal'; to: string; data: SignalData };
 
-/** Position update, sent on the unordered "state" channel. `s` is a sequence number so late packets can be dropped. */
+/**
+ * Position update, sent on the unordered "state" channel. `s` is a sequence number so late packets can be dropped.
+ * `r` is the place the position is in: absent when outdoors, otherwise the id of the building they are inside.
+ * Positions are world pixels outdoors and room pixels indoors, so they only mean something to people in the same place.
+ */
 export interface StateMsg {
   t: 'p';
   x: number;
   y: number;
   s: number;
+  r?: string;
 }
+
+export const MAX_PLACE = 64;
 
 /** Chat line, sent on the reliable "chat" channel. */
 export interface ChatMsg {
@@ -103,7 +110,8 @@ export function parseStateMsg(raw: unknown): StateMsg | null {
   if (!isObject(m) || m.t !== 'p') return null;
   if (typeof m.x !== 'number' || typeof m.y !== 'number' || typeof m.s !== 'number') return null;
   if (!Number.isFinite(m.x) || !Number.isFinite(m.y) || !Number.isFinite(m.s)) return null;
-  return { t: 'p', x: m.x, y: m.y, s: m.s };
+  if (m.r !== undefined && (typeof m.r !== 'string' || m.r.length > MAX_PLACE)) return null;
+  return m.r ? { t: 'p', x: m.x, y: m.y, s: m.s, r: m.r } : { t: 'p', x: m.x, y: m.y, s: m.s };
 }
 
 export function parseChatMsg(raw: unknown): ChatMsg | null {

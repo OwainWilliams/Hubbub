@@ -7,12 +7,15 @@ export type LinkStatus = 'connecting' | 'connected' | 'failed';
 
 export interface RosterEntry extends PeerInfo {
   status: LinkStatus;
+  /** Where they last said they were: '' outdoors, otherwise a building id. */
+  place: string;
 }
 
 export interface SessionHandlers {
   peerJoined?(p: PeerInfo): void;
   peerLeft?(id: string): void;
-  peerState?(id: string, m: StateMsg): void;
+  /** `previousPlace` is where that person was before this update. */
+  peerState?(id: string, m: StateMsg, previousPlace: string): void;
   chat?(id: string, text: string): void;
   linkChanged?(id: string, status: LinkStatus): void;
   /** The server connection dropped. Existing peer links keep working; new people cannot join. */
@@ -41,6 +44,8 @@ export class Session {
   readonly roster = new Map<string, RosterEntry>();
 
   private seq = 0;
+  /** Where we are: '' outdoors, otherwise a building id. Set it with setPlace. */
+  place = '';
 
   private constructor(
     readonly self: PeerInfo,
@@ -74,7 +79,7 @@ export class Session {
     const peers = new PeerManager(ice, (to, data) => sig.send({ type: 'signal', to, data }), {
       onOpen: (id) => holder.session?.setStatus(id, 'connected'),
       onClosed: (id) => holder.session?.setStatus(id, 'failed'),
-      onState: (id, m) => holder.session?.handlers.peerState?.(id, m),
+      onState: (id, m) => holder.session?.onPeerState(id, m),
       onChat: (id, m: ChatMsg) => holder.session?.handlers.chat?.(id, m.text),
     });
     const session = new Session({ id: welcome.id, name: opts.name, color: opts.color }, opts.code, sig, peers);
@@ -85,7 +90,7 @@ export class Session {
 
     // We are the newcomer: start a connection to everyone already here.
     for (const p of welcome.peers) {
-      session.roster.set(p.id, { ...p, status: 'connecting' });
+      session.roster.set(p.id, { ...p, status: 'connecting', place: '' });
       void peers.connectTo(p.id).catch((err) => {
         console.warn('connect failed', p.id, err);
         session.setStatus(p.id, 'failed');
@@ -98,7 +103,7 @@ export class Session {
     switch (m.type) {
       case 'peer-joined':
         // The newcomer will send us an offer, so we only record them here.
-        this.roster.set(m.peer.id, { ...m.peer, status: 'connecting' });
+        this.roster.set(m.peer.id, { ...m.peer, status: 'connecting', place: '' });
         this.handlers.peerJoined?.(m.peer);
         break;
       case 'peer-left':
@@ -120,12 +125,24 @@ export class Session {
     this.handlers.linkChanged?.(id, status);
   }
 
-  sendState(x: number, y: number): void {
-    this.peers.broadcastState({ t: 'p', x: Math.round(x * 10) / 10, y: Math.round(y * 10) / 10, s: ++this.seq });
+  private onPeerState(id: string, m: StateMsg): void {
+    const entry = this.roster.get(id);
+    if (!entry) return;
+    const place = m.r ?? '';
+    const before = entry.place;
+    entry.place = place;
+    this.handlers.peerState?.(id, m, before);
   }
 
+  sendState(x: number, y: number): void {
+    const m: StateMsg = { t: 'p', x: Math.round(x * 10) / 10, y: Math.round(y * 10) / 10, s: ++this.seq };
+    if (this.place) m.r = this.place;
+    this.peers.broadcastState(m);
+  }
+
+  /** Chat only goes to people in the same place as us, so what is said inside a building stays inside. */
   sendChat(text: string): void {
-    this.peers.broadcastChat({ t: 'c', text });
+    this.peers.broadcastChat({ t: 'c', text }, (id) => this.roster.get(id)?.place === this.place);
   }
 
   leave(): void {

@@ -137,8 +137,9 @@ export class PeerManager {
     for (const l of this.links.values()) l.sendState(m);
   }
 
-  broadcastChat(m: ChatMsg): void {
-    for (const l of this.links.values()) l.sendChat(m);
+  /** Sends chat to everyone, or only to people `include` accepts (used to keep building chat private). */
+  broadcastChat(m: ChatMsg, include: (id: string) => boolean = () => true): void {
+    for (const [id, l] of this.links) if (include(id)) l.sendChat(m);
   }
 
   closeAll(): void {

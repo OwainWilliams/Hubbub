@@ -69,5 +69,6 @@ Secrets survive redeploys. Without them the app uses STUN only.
 ## Status
 
 - Phase 0 (skeleton): done.
-- Phase 1 (walk and chat): built and tested with real browsers on one machine. Not yet tested across different networks or with TURN. Players are coloured circles on an empty grid. See [docs/protocol.md](docs/protocol.md).
-- Next: Phase 2 (avatars) and Phase 3 (generated world).
+- Phase 1 (walk and chat): built and tested with real browsers on one machine. Not yet tested across different networks or with TURN. See [docs/protocol.md](docs/protocol.md).
+- Phase 3 (generated world) and Phase 4 (buildings): built and tested. The town is endless and identical for everyone in a room; four kinds of square (houses, market, park, plaza); enterable buildings with generated interiors; private chat inside. Art is placeholder shapes, kept in `app/src/game/art.ts` so a Kenney tileset can replace it.
+- Next: avatars, proximity voice, screen sharing.
