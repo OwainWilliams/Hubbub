@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
-import { CHUNK, T, TILE, type Building, type Chunk } from '../world/generate';
-import { I, type Interior } from '../world/interior';
+import { CHUNK, T, TILE, type Building, type Chunk } from '../../world/generate';
+import { I, type Interior } from '../../world/interior';
 
 /**
  * Placeholder art, drawn from rectangles and circles. This is the only file that knows how the town looks,

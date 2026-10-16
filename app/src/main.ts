@@ -1,6 +1,6 @@
-import Phaser from 'phaser';
 import { lookColor } from './avatar/look';
-import { GameScene } from './game/GameScene';
+import { GameController } from './game/GameController';
+import { PhaserRenderer } from './game/phaser/PhaserRenderer';
 import { Session } from './net/session';
 import { Hud } from './ui/hud';
 import { initJoin } from './ui/join';
@@ -18,13 +18,6 @@ initJoin(async ({ name, look, code }) => {
   window.addEventListener('pagehide', () => session.leave());
 
   const hud = new Hud(code);
-  const game = new Phaser.Game({
-    type: Phaser.AUTO,
-    parent: 'game',
-    backgroundColor: '#14181f',
-    pixelArt: true,
-    scale: { mode: Phaser.Scale.RESIZE, width: '100%', height: '100%' },
-    scene: [],
-  });
-  game.scene.add('game', GameScene, true, { session, hud });
+  const renderer = new PhaserRenderer();
+  await new GameController(session, hud, renderer).start();
 });
