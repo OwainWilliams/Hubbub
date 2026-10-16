@@ -57,6 +57,9 @@ export class GameScene extends Phaser.Scene {
   private sentX = NaN;
   private sentY = NaN;
 
+  /** Where a click or tap asked us to walk to, until we get there. */
+  private walkTarget: { x: number; y: number } | null = null;
+  private walkStuckMs = 0;
   private voice!: Voice;
   private share!: ScreenShare;
   private lastVoiceTick = 0;
@@ -92,6 +95,11 @@ export class GameScene extends Phaser.Scene {
 
     this.cameras.main.startFollow(this.me.box, true, 0.12, 0.12);
     this.keys = this.input.keyboard!.addKeys('W,A,S,D,UP,DOWN,LEFT,RIGHT', false) as Record<string, Phaser.Input.Keyboard.Key>;
+    this.input.on('pointerdown', (p: Phaser.Input.Pointer) => {
+      this.walkTarget = { x: p.worldX, y: p.worldY };
+      this.walkStuckMs = 0;
+      (document.activeElement as HTMLElement | null)?.blur?.();
+    });
     this.scale.on('resize', () => (this.interior ? this.frameInterior() : this.syncChunks(true)));
 
     this.voice = new Voice(this.session);
@@ -257,7 +265,18 @@ export class GameScene extends Phaser.Scene {
       // Tell a newly connected peer where we are right away instead of waiting for us to move.
       if (status === 'connected') this.session.sendState(this.x, this.y);
     };
-    h.serverLost = () => this.hud.system('Lost the connection to the server. People already connected still work, but nobody new can join.');
+    h.serverLost = () => {
+      // The room counts a dropped server connection as us leaving, so everyone else closes their links to us.
+      // The way back is to join again, so do that automatically after a short random pause (so a whole room
+      // does not reconnect in the same instant after a server restart).
+      try {
+        sessionStorage.setItem('hubbub.rejoin', '1');
+      } catch {
+        // Without storage the person can still press the button.
+      }
+      this.hud.banner('Lost the connection to the server. Rejoining…', { label: 'Rejoin now', run: () => location.reload() });
+      window.setTimeout(() => location.reload(), 1000 + Math.random() * 3000);
+    };
   }
 
   private announceMove(r: Remote, from: string, to: string): void {
@@ -396,6 +415,12 @@ export class GameScene extends Phaser.Scene {
       }),
       world: () => ({ seed: this.world.seed, checksum: checksumChunk(this.world.chunk(0, 0)), loaded: this.chunks.size }),
       doors: () => this.world.chunk(1, 0).buildings.filter((b) => b.enterable).map((b) => ({ id: b.id, name: b.name, x: (b.doorX + 1) * TILE, y: (b.doorY + 0.5) * TILE })),
+      dropServer: () => this.session.debugDropServer(),
+      breakLink: (name: string) => {
+        const id = [...this.session.roster].find(([, p]) => p.name === name)?.[0];
+        if (id) this.session.debugBreak(id);
+      },
+      statuses: () => Object.fromEntries([...this.session.roster.values()].map((p) => [p.name, p.status])),
       room: () => (this.interior ? { spawn: this.interior.spawn, door: { x: (this.interior.doorX + 1) * TILE, y: (this.interior.doorY + 0.5) * TILE }, w: this.interior.w * TILE, h: this.interior.h * TILE } : null),
       avatars: () => ({
         me: { sprite: !!this.me.sprite, look: this.session.self.look },
@@ -499,12 +524,28 @@ export class GameScene extends Phaser.Scene {
   update(time: number, delta: number): void {
     const dt = delta / 1000;
     const k = this.keys;
-    const dx = (k.D.isDown || k.RIGHT.isDown ? 1 : 0) - (k.A.isDown || k.LEFT.isDown ? 1 : 0);
-    const dy = (k.S.isDown || k.DOWN.isDown ? 1 : 0) - (k.W.isDown || k.UP.isDown ? 1 : 0);
+    let dx = (k.D.isDown || k.RIGHT.isDown ? 1 : 0) - (k.A.isDown || k.LEFT.isDown ? 1 : 0);
+    let dy = (k.S.isDown || k.DOWN.isDown ? 1 : 0) - (k.W.isDown || k.UP.isDown ? 1 : 0);
+    if (dx !== 0 || dy !== 0) {
+      this.walkTarget = null; // the keyboard takes over from a click
+    } else if (this.walkTarget) {
+      const tx = this.walkTarget.x - this.x;
+      const ty = this.walkTarget.y - this.y;
+      if (Math.hypot(tx, ty) < 6) this.walkTarget = null;
+      else {
+        dx = tx;
+        dy = ty;
+      }
+    }
 
     const room = this.interior;
     const blocked = room ? (px: number, py: number) => interiorBlocked(room, px, py, COLLIDE_RADIUS, TILE) : (px: number, py: number) => this.world.blocked(px, py, COLLIDE_RADIUS);
     const next = stepPosition(this.x, this.y, dx, dy, dt, blocked);
+    // A click on a wall or piece of furniture would otherwise leave us pushing against it forever.
+    if (this.walkTarget) {
+      this.walkStuckMs = Math.hypot(next.x - this.x, next.y - this.y) < 0.2 ? this.walkStuckMs + delta : 0;
+      if (this.walkStuckMs > 350) this.walkTarget = null;
+    }
     this.x = next.x;
     this.y = next.y;
     this.me.box.setPosition(this.x, this.y).setDepth(this.y);

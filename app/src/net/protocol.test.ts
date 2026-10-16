@@ -9,6 +9,7 @@ describe('parseServerMsg', () => {
     expect(parseServerMsg(JSON.stringify({ type: 'welcome', id: 'me', peers: [wirePeer] }))).toEqual({ type: 'welcome', id: 'me', peers: [peer] });
     expect(parseServerMsg(JSON.stringify({ type: 'peer-left', id: 'x' }))).toEqual({ type: 'peer-left', id: 'x' });
     expect(parseServerMsg(JSON.stringify({ type: 'signal', from: 'x', data: { kind: 'offer', sdp: 'v=0' } }))).not.toBeNull();
+    expect(parseServerMsg(JSON.stringify({ type: 'signal', from: 'x', data: { kind: 'reset' } }))).toEqual({ type: 'signal', from: 'x', data: { kind: 'reset' } });
   });
   it('rejects junk, wrong shapes and non-strings', () => {
     expect(parseServerMsg('pong')).toBeNull();

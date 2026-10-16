@@ -36,7 +36,7 @@ export class ScreenShare {
   constructor(private readonly session: Session) {
     session.shareListeners.push((id, m) => this.handleShare(id, m));
     session.linkListeners.push((id, status) => {
-      if (status === 'failed') {
+      if (status !== 'connected') {
         this.sharers.delete(id);
         this.viewers.delete(id);
         this.told.delete(id);

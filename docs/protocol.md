@@ -11,7 +11,7 @@ Client to server:
 | Message | Meaning |
 |---|---|
 | `{"type":"hello","name":"Ann","color":"#d9a441","look":[1,2,3,1,1]}` | Join with a display name (max 24), a colour (used for the roster dot) and an avatar `look`: five small numbers (kind, hat, robe, skin, extra) that the client turns into a picture. Must be sent within 10 s of connecting. |
-| `{"type":"signal","to":"<id>","data":{...}}` | Relay a WebRTC setup message to one person. `data` is `{"kind":"offer"\|"answer","sdp":"..."}` or `{"kind":"ice","candidate":{...}}`. |
+| `{"type":"signal","to":"<id>","data":{...}}` | Relay a WebRTC setup message to one person. `data` is `{"kind":"offer"\|"answer","sdp":"..."}`, `{"kind":"ice","candidate":{...}}` or `{"kind":"reset"}`. |
 | `ping` (plain text) | Keepalive every 25 s. The server answers `pong` without waking. |
 
 Server to client:
@@ -53,11 +53,18 @@ Everything received from another person is validated before use (`app/src/net/pr
 
 `GET /ice` returns `{"iceServers":[...]}`: Cloudflare STUN always, plus Cloudflare TURN credentials when the Worker has the secrets `TURN_KEY_ID` and `TURN_API_TOKEN`. TURN is used only when a direct link cannot be made.
 
-## Known limits (Phase 1)
+## Reliability
 
-- A peer link that fails is marked "could not connect" and is not retried yet (Phase 7).
-- No rate limiting on messages per socket or per peer yet.
-- No TURN until the secrets are set. About one network in ten blocks direct links, so test from a work network before relying on this.
+- **Broken connections heal.** If a link between two people fails (or stays "disconnected" for 8 seconds), the one who noticed sends `{"kind":"reset"}` through the server. Both drop the old link and the person with the lower id makes a fresh offer, so there is still only ever one offer. It retries up to 5 times with a growing pause (1, 2, 4, 8, 15 s) before showing "could not connect".
+- **Dropped server connection.** The room counts it as you leaving, so everyone else closes their link to you. The page therefore reloads and rejoins by itself after a random 1 to 4 second pause, using your saved name, look and room code.
+- **Rate limits.** The server closes a socket (code `1008`) that sends more than a burst of 600 messages or 60 a second on average. Between people, position updates are limited to 40 a second and chat to 3 a second, and any message over 4096 characters is ignored.
+- **Click to walk.** A click or tap sets a walking target; the keyboard overrides it, and it is dropped if you get stuck against a wall.
+
+## Known limits
+
+- No TURN until the secrets are set. About one in ten networks block direct links, so test from a work network before relying on this.
+- Reconnection is tested by breaking a link in the browser. A real network outage (Wi-Fi off and on) has not been tried.
+- Privacy inside buildings is cooperative (see section 4), and there is no moderation, as requested.
 
 ## 4. The world
 

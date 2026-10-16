@@ -1,3 +1,4 @@
+import { RateLimiter } from './rateLimit';
 import { parseReliableMsg, parseStateMsg, type ChatMsg, type ShareMsg, type SignalData, type StateMsg } from './protocol';
 
 export interface PeerEvents {
@@ -28,6 +29,9 @@ export interface LinkStats {
  * Voice and screen sharing use one audio and one video transceiver, created in the first offer. Turning the
  * mic or a screen share on or off just swaps the track in that slot (replaceTrack), so nothing is renegotiated.
  */
+const MAX_CHANNEL_MESSAGE = 4096; // characters; real messages are far smaller
+const DISCONNECT_GRACE_MS = 8000;
+
 class PeerLink {
   readonly pc: RTCPeerConnection;
   private readonly state: RTCDataChannel;
@@ -36,6 +40,10 @@ class PeerLink {
   private remoteSet = false;
   private pending: RTCIceCandidateInit[] = [];
   private closed = false;
+  private disconnectTimer: number | undefined;
+  // Allowances per person: about 15 position updates a second is normal, so 40 is generous; chat is a few lines at most.
+  private readonly stateLimit = new RateLimiter(60, 40);
+  private readonly chatLimit = new RateLimiter(10, 3);
 
   constructor(
     private readonly id: string,
@@ -51,16 +59,23 @@ class PeerLink {
       if (e.candidate) this.sendSignal({ kind: 'ice', candidate: e.candidate.toJSON() });
     };
     this.pc.onconnectionstatechange = () => {
-      if (this.pc.connectionState === 'failed') this.close();
+      const state = this.pc.connectionState;
+      window.clearTimeout(this.disconnectTimer);
+      if (state === 'failed') this.close();
+      // "disconnected" often heals by itself (Wi-Fi blip), so wait a few seconds before giving up.
+      else if (state === 'disconnected') this.disconnectTimer = window.setTimeout(() => this.close(), DISCONNECT_GRACE_MS);
     };
     this.state.onopen = () => events.onOpen(id);
     this.state.onmessage = (e) => {
+      if (typeof e.data !== 'string' || e.data.length > MAX_CHANNEL_MESSAGE || !this.stateLimit.allow()) return;
       const m = parseStateMsg(e.data);
       if (m) events.onState(id, m);
     };
     this.chat.onmessage = (e) => {
+      if (typeof e.data !== 'string' || e.data.length > MAX_CHANNEL_MESSAGE) return;
       const m = parseReliableMsg(e.data);
       if (!m) return;
+      if (m.t === 'c' && !this.chatLimit.allow()) return;
       if (m.t === 's') events.onShare(id, m);
       else events.onChat(id, m);
     };
@@ -80,7 +95,7 @@ class PeerLink {
   }
 
   private async apply(data: SignalData): Promise<void> {
-    if (this.closed) return;
+    if (this.closed || data.kind === 'reset') return;
     if (data.kind === 'ice') {
       if (this.remoteSet) await this.pc.addIceCandidate(data.candidate);
       else this.pending.push(data.candidate);
@@ -155,11 +170,13 @@ class PeerLink {
     if (this.chat.readyState === 'open') this.chat.send(JSON.stringify(m));
   }
 
-  close(): void {
+  /** `quietly` closes without reporting a failure (used when the other side asked us to reset). */
+  close(quietly = false): void {
     if (this.closed) return;
     this.closed = true;
+    window.clearTimeout(this.disconnectTimer);
     this.pc.close();
-    this.events.onClosed(this.id);
+    if (!quietly) this.events.onClosed(this.id);
   }
 }
 
@@ -192,6 +209,7 @@ export class PeerManager {
   }
 
   handleSignal(from: string, data: SignalData): void {
+    if (data.kind === 'reset') return; // the session deals with these
     let link = this.links.get(from);
     if (!link) {
       if (data.kind !== 'offer') return; // stale answer or candidate for a link we no longer have
@@ -200,8 +218,15 @@ export class PeerManager {
     link.handle(data);
   }
 
-  remove(id: string): void {
-    this.links.get(id)?.close();
+  remove(id: string, quietly = false): void {
+    const link = this.links.get(id);
+    if (!link) return;
+    link.close(quietly);
+    this.links.delete(id);
+  }
+
+  has(id: string): boolean {
+    return this.links.has(id);
   }
 
   setOutgoing(id: string, kind: MediaKind, track: MediaStreamTrack | null): Promise<boolean> {

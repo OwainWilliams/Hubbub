@@ -64,7 +64,19 @@ export class Hud {
       }
     });
 
+    const rosterBox = document.getElementById('roster-box')!;
+    rosterBox.querySelector('h2')!.addEventListener('click', () => rosterBox.classList.toggle('open'));
+
     this.root.hidden = false;
+    this.syncControls();
+  }
+
+  /** Hides the controls panel when none of its buttons are showing (phones have no mic or share buttons). */
+  private syncControls(): void {
+    const panel = document.getElementById('controls')!;
+    panel.style.display = '';
+    const anyVisible = [...panel.querySelectorAll('button')].some((b) => b.offsetParent !== null);
+    panel.style.display = anyVisible ? '' : 'none';
   }
 
   chat(name: string, text: string, self: boolean): void {
@@ -101,6 +113,20 @@ export class Hud {
     document.getElementById('roster-count')!.textContent = `${lines.length} / 12`;
   }
 
+  /** A message pinned to the top of the screen, with an optional button. Replaces any earlier banner. */
+  banner(text: string, action?: { label: string; run: () => void }): void {
+    const el = document.getElementById('banner')!;
+    el.replaceChildren(document.createTextNode(text));
+    if (action) {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.textContent = action.label;
+      b.onclick = action.run;
+      el.append(b);
+    }
+    el.hidden = false;
+  }
+
   setMic(state: 'off' | 'on' | 'muted'): void {
     const b = document.getElementById('mic') as HTMLButtonElement;
     b.dataset.state = state;
@@ -119,6 +145,7 @@ export class Hud {
     const watch = document.getElementById('watch') as HTMLButtonElement;
     watch.hidden = !state.watching;
     if (state.watching) watch.textContent = `Watch ${state.watching.name}'s screen`;
+    this.syncControls();
     this.theatreStream = state.watching?.stream ?? null;
     document.getElementById('theatre-title')!.textContent = state.watching ? `${state.watching.name}'s screen` : '';
     const video = document.getElementById('theatre-video') as HTMLVideoElement;

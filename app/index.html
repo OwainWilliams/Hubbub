@@ -16,7 +16,7 @@
       #game { position: fixed; inset: 0; }
 
       /* join */
-      #join { position: fixed; inset: 0; display: grid; place-items: center; padding: 16px; background: var(--ink); z-index: 20; }
+      #join { position: fixed; inset: 0; display: grid; place-items: start center; align-content: safe center; padding: 16px; background: var(--ink); z-index: 20; overflow-y: auto; }
       #join[hidden] { display: none; }
       #join-form { width: min(420px, 100%); display: grid; gap: 6px; }
       #join h1 { margin: 0; font: 700 3rem Georgia, serif; color: var(--ochre); }
@@ -49,7 +49,7 @@
       #place { color: var(--mute); font-size: .85rem; }
       #copy-link { background: transparent; color: var(--paper); border: 1px solid var(--line); border-radius: 3px; padding: 4px 10px; cursor: pointer; }
       #roster-box { top: 10px; right: 10px; width: 200px; font-size: .85rem; }
-      #roster-box h2 { margin: 0 0 6px; font-size: .75rem; letter-spacing: .08em; text-transform: uppercase; color: var(--mute); font-weight: 500; display: flex; justify-content: space-between; }
+      #roster-box h2 { cursor: pointer; margin: 0 0 6px; font-size: .75rem; letter-spacing: .08em; text-transform: uppercase; color: var(--mute); font-weight: 500; display: flex; justify-content: space-between; }
       #roster { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
       #roster li { display: grid; grid-template-columns: 12px 1fr; column-gap: 6px; align-items: center; }
       #roster li i { width: 10px; height: 10px; border-radius: 50%; border: 1px solid var(--ink); }
@@ -57,6 +57,9 @@
       #roster li small { grid-column: 2; color: var(--mute); }
       #roster li[data-status=failed] small { color: var(--brick); }
       #roster li[data-status=connected] small { color: var(--moss); }
+      #banner { position: fixed; top: 64px; left: 50%; transform: translateX(-50%); z-index: 12; max-width: min(560px, calc(100% - 20px)); background: #3a2420; border: 1px solid var(--brick); border-radius: 4px; padding: 8px 12px; font-size: .9rem; display: flex; gap: 10px; align-items: center; }
+      #banner[hidden] { display: none; }
+      #banner button { background: var(--paper); color: var(--ink); border: 0; border-radius: 3px; padding: 5px 12px; font-weight: 700; cursor: pointer; flex: none; }
       #controls { left: 50%; bottom: 10px; transform: translateX(-50%); display: flex; gap: 8px; }
       #controls button { background: var(--night); color: var(--paper); border: 1px solid var(--line); border-radius: 3px; padding: 7px 14px; cursor: pointer; }
       #controls button[data-state=on] { border-color: var(--moss); color: #9fcf9a; }
@@ -80,7 +83,18 @@
       #chat-log .sys { color: var(--mute); font-style: italic; }
       #chat-input { background: var(--night); color: var(--paper); border: 1px solid var(--line); border-radius: 3px; padding: 8px 10px; width: 100%; }
       #hint { font-size: .75rem; color: var(--mute); margin: 0; }
-      @media (max-width: 720px) { #controls { display: none; } #room-info { max-width: calc(100% - 20px); } #roster-box { top: 56px; } }
+      /* Phones and tablets: text chat, tap to walk and watching a shared screen. Voice and sharing are desktop features. */
+      @media (pointer: coarse) { #mic, #share { display: none !important; } #chat-input, input[type=text] { font-size: 16px; } #hint { display: none; } }
+      @media (max-width: 720px) {
+        #room-info { max-width: calc(100% - 20px); }
+        /* On a phone the roster is a one-line summary until tapped, so it never covers the map or the room info. */
+        #roster-box { top: auto; bottom: 232px; right: 10px; width: auto; min-width: 150px; }
+        #roster-box:not(.open) #roster { display: none; }
+        #roster-box:not(.open) h2 { margin: 0; gap: 12px; }
+        #chat-box { bottom: 30px; }
+        #chat-log { max-height: 110px; }
+        #controls { bottom: 232px; left: 10px; transform: none; }
+      }
 
       /* credits */
       #credits-link { position: fixed; right: 12px; bottom: 8px; font-size: 12px; z-index: 10; }
@@ -111,6 +125,7 @@
     </div>
 
     <div id="hud" hidden>
+      <div id="banner" role="alert" hidden></div>
       <div class="panel" id="room-info">
         <span>Room <span id="room-code"></span></span>
         <button id="copy-link" type="button">Copy invite link</button>
@@ -130,7 +145,7 @@
         <form id="chat-form" autocomplete="off">
           <input id="chat-input" type="text" maxlength="200" placeholder="Say something (Enter to type)" aria-label="Chat message" />
         </form>
-        <p id="hint">Move with WASD or the arrow keys. Press Esc to leave the chat box.</p>
+        <p id="hint">Move with WASD or the arrow keys, or click or tap where to walk. Esc leaves the chat box.</p>
       </div>
     </div>
 

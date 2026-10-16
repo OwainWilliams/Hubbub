@@ -15,7 +15,9 @@ export interface PeerInfo {
 
 export type SignalData =
   | { kind: 'offer' | 'answer'; sdp: string }
-  | { kind: 'ice'; candidate: RTCIceCandidateInit };
+  | { kind: 'ice'; candidate: RTCIceCandidateInit }
+  /** "Our connection broke: drop yours and let us start again." */
+  | { kind: 'reset' };
 
 export type ServerMsg =
   | { type: 'welcome'; id: string; peers: PeerInfo[] }
@@ -90,6 +92,7 @@ function parseSignalData(v: unknown): SignalData | null {
   if (!isObject(v)) return null;
   if ((v.kind === 'offer' || v.kind === 'answer') && typeof v.sdp === 'string') return { kind: v.kind, sdp: v.sdp };
   if (v.kind === 'ice' && isObject(v.candidate)) return { kind: 'ice', candidate: v.candidate as RTCIceCandidateInit };
+  if (v.kind === 'reset') return { kind: 'reset' };
   return null;
 }
 

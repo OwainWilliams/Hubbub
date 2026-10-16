@@ -47,6 +47,15 @@ export function initJoin(onJoin: (c: JoinChoice) => Promise<void>): void {
   }
   const picker = mountAvatarPicker(document.getElementById('avatar-picker')!, saved, () => {});
 
+  // After a dropped server connection the page reloads itself; join again without asking.
+  let autoRejoin = false;
+  try {
+    autoRejoin = sessionStorage.getItem('hubbub.rejoin') === '1';
+    sessionStorage.removeItem('hubbub.rejoin'); // once only, so a join that keeps failing cannot loop
+  } catch {
+    // no storage, no auto rejoin
+  }
+
   fetch(`${WORKER_URL}/health`)
     .then((r) => r.json() as Promise<{ ok?: boolean }>)
     .then((b) => {
@@ -84,4 +93,6 @@ export function initJoin(onJoin: (c: JoinChoice) => Promise<void>): void {
       button.textContent = 'Join';
     }
   };
+
+  if (autoRejoin && nameInput.value && codeInput.value) form.requestSubmit();
 }

@@ -20,10 +20,11 @@ export interface SessionHandlers {
   chat?(id: string, text: string): void;
   share?(id: string, m: ShareMsg): void;
   linkChanged?(id: string, status: LinkStatus): void;
-  /** The server connection dropped. Existing peer links keep working; new people cannot join. */
+  /** The server connection dropped. The room treats that as us leaving, so the page rejoins. */
   serverLost?(): void;
 }
 
+const MAX_RETRIES = 5;
 const FALLBACK_ICE: RTCIceServer[] = [{ urls: 'stun:stun.cloudflare.com:3478' }];
 const JOIN_TIMEOUT_MS = 8000;
 
@@ -51,6 +52,8 @@ export class Session {
   /** Listeners for screen-share announcements from other people. */
   readonly shareListeners: Array<(id: string, m: ShareMsg) => void> = [];
 
+  private readonly retries = new Map<string, number>();
+  private readonly retryTimers = new Map<string, number>();
   private seq = 0;
   /** Where we are: '' outdoors, otherwise a building id. Set it with setPlace. */
   place = '';
@@ -63,6 +66,9 @@ export class Session {
   ) {}
 
   static async join(opts: { code: string; name: string; color: string; look: Look }): Promise<Session> {
+    if (typeof RTCPeerConnection === 'undefined' || typeof WebSocket === 'undefined') {
+      throw new Error('This browser is missing features Hubbub needs. Try a recent Chrome, Edge, Firefox or Safari.');
+    }
     const ice = await fetchIceServers();
     const sig = new Signalling(roomUrl(opts.code));
     await sig.open();
@@ -86,7 +92,7 @@ export class Session {
     const holder: { session?: Session } = {};
     const peers = new PeerManager(ice, (to, data) => sig.send({ type: 'signal', to, data }), {
       onOpen: (id) => holder.session?.setStatus(id, 'connected'),
-      onClosed: (id) => holder.session?.setStatus(id, 'failed'),
+      onClosed: (id) => holder.session?.linkLost(id),
       onState: (id, m) => holder.session?.onPeerState(id, m),
       onChat: (id, m: ChatMsg) => holder.session?.handlers.chat?.(id, m.text),
       onShare: (id, m) => holder.session?.shareListeners.forEach((fn) => fn(id, m)),
@@ -117,19 +123,72 @@ export class Session {
         break;
       case 'peer-left':
         if (this.roster.delete(m.id)) {
-          this.peers.remove(m.id);
+          window.clearTimeout(this.retryTimers.get(m.id));
+          this.retries.delete(m.id);
+          this.peers.remove(m.id, true);
+          for (const fn of this.linkListeners) fn(m.id, 'failed'); // so voice and screen share let go of them
           this.handlers.peerLeft?.(m.id);
         }
         break;
       case 'signal':
-        if (this.roster.has(m.from)) this.peers.handleSignal(m.from, m.data);
+        if (!this.roster.has(m.from)) break;
+        if (m.data.kind === 'reset') this.onReset(m.from);
+        else this.peers.handleSignal(m.from, m.data);
         break;
     }
+  }
+
+  /**
+   * A connection to someone broke. Both sides drop it and the person with the lower id starts a fresh one, so
+   * there is always exactly one offer. Tries a few times with a growing pause, then gives up and says so.
+   */
+  private linkLost(id: string): void {
+    if (!this.roster.has(id)) return;
+    const attempt = (this.retries.get(id) ?? 0) + 1;
+    this.retries.set(id, attempt);
+    if (attempt > MAX_RETRIES) {
+      this.setStatus(id, 'failed');
+      return;
+    }
+    this.setStatus(id, 'connecting');
+    this.signalling.send({ type: 'signal', to: id, data: { kind: 'reset' } });
+    this.scheduleOffer(id, Math.min(1000 * 2 ** (attempt - 1), 15_000));
+  }
+
+  /** The other side says their connection to us broke. */
+  private onReset(id: string): void {
+    this.peers.remove(id, true);
+    this.setStatus(id, 'connecting');
+    this.scheduleOffer(id, 500);
+  }
+
+  private scheduleOffer(id: string, delayMs: number): void {
+    window.clearTimeout(this.retryTimers.get(id));
+    if (this.self.id > id) return; // the other person is the one who starts it
+    this.retryTimers.set(
+      id,
+      window.setTimeout(() => {
+        const entry = this.roster.get(id);
+        if (!entry || entry.status === 'connected' || this.peers.has(id)) return;
+        void this.peers.connectTo(id).catch(() => this.linkLost(id));
+      }, delayMs),
+    );
+  }
+
+  /** For tests: drop the server connection, as a server restart would. */
+  debugDropServer(): void {
+    this.signalling.close();
+  }
+
+  /** For tests: break the connection to someone as if the network had dropped it. */
+  debugBreak(id: string): void {
+    this.peers.remove(id);
   }
 
   private setStatus(id: string, status: LinkStatus): void {
     const entry = this.roster.get(id);
     if (!entry || entry.status === status) return;
+    if (status === 'connected') this.retries.delete(id);
     entry.status = status;
     this.handlers.linkChanged?.(id, status);
     for (const fn of this.linkListeners) fn(id, status);

@@ -16,6 +16,10 @@ const MAX_MESSAGE_CHARS = 16 * 1024;
 const MAX_NAME = 24;
 const JOIN_DEADLINE_MS = 10_000;
 const CLOSE_ROOM_FULL = 4001;
+const CLOSE_RATE_LIMIT = 1008;
+// Joining a full room of 12 sends a few hundred setup messages at once, so allow a generous burst.
+const BUCKET_CAPACITY = 600;
+const BUCKET_PER_SECOND = 60;
 
 interface PeerInfo {
   id: string;
@@ -47,7 +51,15 @@ function cleanColor(v: unknown): string {
   return typeof v === 'string' && /^#[0-9a-fA-F]{6}$/.test(v) ? v : '#d9a441';
 }
 
+interface Bucket {
+  tokens: number;
+  last: number;
+}
+
 export class Room implements DurableObject {
+  /** Per-socket message allowance. Held in memory only; it resets if the object is evicted, which is fine. */
+  private readonly buckets = new WeakMap<WebSocket, Bucket>();
+
   constructor(
     private readonly state: DurableObjectState,
     _env: Env,
@@ -104,6 +116,10 @@ export class Room implements DurableObject {
     }
     const att = ws.deserializeAttachment() as Attachment | null;
     if (!att || typeof msg !== 'object' || msg === null) return;
+    if (!this.allow(ws)) {
+      ws.close(CLOSE_RATE_LIMIT, 'too-many-messages');
+      return;
+    }
 
     if (msg.type === 'hello' && !att.joined) {
       att.name = cleanName(msg.name);
@@ -118,7 +134,7 @@ export class Room implements DurableObject {
 
     if (msg.type === 'signal' && att.joined && typeof msg.to === 'string') {
       const data = msg.data as { kind?: unknown } | null;
-      if (!data || typeof data !== 'object' || !['offer', 'answer', 'ice'].includes(data.kind as string)) return;
+      if (!data || typeof data !== 'object' || !['offer', 'answer', 'ice', 'reset'].includes(data.kind as string)) return;
       for (const other of this.state.getWebSockets()) {
         const o = other.deserializeAttachment() as Attachment | null;
         if (o?.joined && o.id === msg.to && other !== ws) {
@@ -140,6 +156,17 @@ export class Room implements DurableObject {
 
   async webSocketError(ws: WebSocket): Promise<void> {
     this.leave(ws);
+  }
+
+  private allow(ws: WebSocket): boolean {
+    const now = Date.now();
+    const b = this.buckets.get(ws) ?? { tokens: BUCKET_CAPACITY, last: now };
+    b.tokens = Math.min(BUCKET_CAPACITY, b.tokens + ((now - b.last) / 1000) * BUCKET_PER_SECOND);
+    b.last = now;
+    this.buckets.set(ws, b);
+    if (b.tokens < 1) return false;
+    b.tokens -= 1;
+    return true;
   }
 
   private leave(ws: WebSocket): void {
