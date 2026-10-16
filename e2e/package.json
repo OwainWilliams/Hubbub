@@ -4,7 +4,7 @@
   "version": "0.0.1",
   "type": "module",
   "scripts": {
-    "test": "node two-peers.mjs && node room-limits.mjs"
+    "test": "node two-peers.mjs && node world-places.mjs && node voice.mjs && node screenshare.mjs && node room-limits.mjs"
   },
   "devDependencies": {
     "playwright-core": "1.49.1"

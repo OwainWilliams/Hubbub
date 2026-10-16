@@ -38,6 +38,15 @@ One `RTCPeerConnection` per pair of people (full mesh, so 12 people is 66 links)
 | `state` | 0 | unordered, `maxRetransmits: 0` | `{"t":"p","x":123.4,"y":56.7,"s":42}` about 15 per second while moving, with `"r":"<building id>"` added when inside a building. `s` is a sequence number; older packets are dropped. Positions are world pixels outdoors and room pixels indoors. |
 | `chat` | 1 | ordered, reliable | `{"t":"c","text":"hello"}` (max 200 characters). Sent only to people whose last reported place matches the sender's, so what is said inside a building is never sent to people outside. |
 
+Voice and screen sharing use one audio and one video slot in each connection, created in the first offer, so switching the mic or a share on and off swaps a track (`replaceTrack`) and nothing is renegotiated.
+
+| Reliable message | Meaning |
+|---|---|
+| `{"t":"s","on":true}` / `{"t":"s","on":false}` | Sent to people in the same building when someone starts or stops sharing their screen. `"full":true` means the viewer limit (6) was reached and this person will not get the picture. |
+
+- **Voice:** your mic track is only handed to people who should hear you: within 360 px outdoors (with a 15% margin before it cuts out), or everyone in the same building. Far-away people cost no bandwidth. Volume falls off with distance and pans left or right.
+- **Screen share:** the sharer sends one video stream to each viewer in the same building, at a bitrate that shrinks as viewers are added (about 3 Mbit/s shared between them).
+
 Everything received from another person is validated before use (`app/src/net/protocol.ts`). Names and chat are shown with `textContent`, never as HTML.
 
 ## 3. ICE servers

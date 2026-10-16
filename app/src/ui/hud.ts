@@ -18,6 +18,7 @@ const STATUS_LABEL: Record<LinkStatus, string> = {
 export class Hud {
   onSend: (text: string) => void = () => {};
   onMic: () => void = () => {};
+  onShare: () => void = () => {};
   onFocusChange: (focused: boolean) => void = () => {};
 
   private readonly root = document.getElementById('hud')!;
@@ -40,6 +41,9 @@ export class Hud {
     };
 
     (document.getElementById('mic') as HTMLButtonElement).onclick = () => this.onMic();
+    (document.getElementById('share') as HTMLButtonElement).onclick = () => this.onShare();
+    (document.getElementById('watch') as HTMLButtonElement).onclick = () => this.toggleTheatre();
+    (document.getElementById('theatre-close') as HTMLButtonElement).onclick = () => this.closeTheatre();
 
     const form = document.getElementById('chat-form') as HTMLFormElement;
     form.onsubmit = (e) => {
@@ -102,6 +106,39 @@ export class Hud {
     b.dataset.state = state;
     b.textContent = state === 'off' ? 'Mic off' : state === 'on' ? 'Mic on' : 'Muted';
     b.setAttribute('aria-pressed', String(state === 'on'));
+  }
+
+  private theatreStream: MediaStream | null = null;
+
+  /** `inside`: you are in a building and can share. `watching`: the name of whoever is sharing to you. */
+  setShare(state: { inside: boolean; sharing: boolean; watching: { name: string; stream: MediaStream } | null }): void {
+    const share = document.getElementById('share') as HTMLButtonElement;
+    share.hidden = !state.inside;
+    share.dataset.state = state.sharing ? 'sharing' : 'off';
+    share.textContent = state.sharing ? 'Stop sharing' : 'Share screen';
+    const watch = document.getElementById('watch') as HTMLButtonElement;
+    watch.hidden = !state.watching;
+    if (state.watching) watch.textContent = `Watch ${state.watching.name}'s screen`;
+    this.theatreStream = state.watching?.stream ?? null;
+    document.getElementById('theatre-title')!.textContent = state.watching ? `${state.watching.name}'s screen` : '';
+    const video = document.getElementById('theatre-video') as HTMLVideoElement;
+    if (!state.watching) this.closeTheatre();
+    else if (!document.getElementById('theatre')!.hidden) video.srcObject = state.watching.stream;
+  }
+
+  private toggleTheatre(): void {
+    const theatre = document.getElementById('theatre')!;
+    if (!theatre.hidden) return this.closeTheatre();
+    if (!this.theatreStream) return;
+    const video = document.getElementById('theatre-video') as HTMLVideoElement;
+    video.srcObject = this.theatreStream;
+    void video.play().catch(() => {});
+    theatre.hidden = false;
+  }
+
+  private closeTheatre(): void {
+    (document.getElementById('theatre-video') as HTMLVideoElement).srcObject = null;
+    document.getElementById('theatre')!.hidden = true;
   }
 
   /** Shows where you are, e.g. "Outside, square 0,0" or "Inside The Damp Lantern". */

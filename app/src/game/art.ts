@@ -149,6 +149,8 @@ function drawBuilding(
 export interface InteriorArt extends ChunkArt {
   /** The wall screen in room pixels, where shared screens get drawn. */
   screenRect: { x: number; y: number; w: number; h: number };
+  /** Text on the dark screen, or null to hide it (when a picture is showing). */
+  setScreenText(text: string | null): void;
 }
 
 export function drawInterior(scene: Phaser.Scene, room: Interior): InteriorArt {
@@ -205,6 +207,10 @@ export function drawInterior(scene: Phaser.Scene, room: Interior): InteriorArt {
 
   return {
     screenRect: { x: sr.x, y: sr.y + 6, w: sr.w, h: sr.h - 10 },
+    setScreenText(text) {
+      label.setVisible(text !== null);
+      if (text !== null) label.setText(text);
+    },
     destroy() {
       g.destroy();
       label.destroy();

@@ -1,6 +1,6 @@
 import { WORKER_URL } from './config';
 import { PeerManager, type LinkStats, type MediaKind } from './peers';
-import { MAX_PEERS, type ChatMsg, type PeerInfo, type ServerMsg, type StateMsg } from './protocol';
+import { MAX_PEERS, type ChatMsg, type PeerInfo, type ServerMsg, type ShareMsg, type StateMsg } from './protocol';
 import { Signalling } from './signalling';
 
 export type LinkStatus = 'connecting' | 'connected' | 'failed';
@@ -17,6 +17,7 @@ export interface SessionHandlers {
   /** `previousPlace` is where that person was before this update. */
   peerState?(id: string, m: StateMsg, previousPlace: string): void;
   chat?(id: string, text: string): void;
+  share?(id: string, m: ShareMsg): void;
   linkChanged?(id: string, status: LinkStatus): void;
   /** The server connection dropped. Existing peer links keep working; new people cannot join. */
   serverLost?(): void;
@@ -45,6 +46,9 @@ export class Session {
 
   /** Extra listeners for link changes (voice and screen sharing use these; the game scene uses handlers.linkChanged). */
   readonly linkListeners: Array<(id: string, status: LinkStatus) => void> = [];
+
+  /** Listeners for screen-share announcements from other people. */
+  readonly shareListeners: Array<(id: string, m: ShareMsg) => void> = [];
 
   private seq = 0;
   /** Where we are: '' outdoors, otherwise a building id. Set it with setPlace. */
@@ -84,6 +88,7 @@ export class Session {
       onClosed: (id) => holder.session?.setStatus(id, 'failed'),
       onState: (id, m) => holder.session?.onPeerState(id, m),
       onChat: (id, m: ChatMsg) => holder.session?.handlers.chat?.(id, m.text),
+      onShare: (id, m) => holder.session?.shareListeners.forEach((fn) => fn(id, m)),
     });
     const session = new Session({ id: welcome.id, name: opts.name, color: opts.color }, opts.code, sig, peers);
     holder.session = session;
@@ -149,13 +154,18 @@ export class Session {
     this.peers.broadcastChat({ t: 'c', text }, (id) => this.roster.get(id)?.place === this.place);
   }
 
+  /** Tells one person that we started or stopped sharing. */
+  sendShare(id: string, m: ShareMsg): void {
+    this.peers.sendTo(id, m);
+  }
+
   /** Voice and video slots, see PeerLink. */
   setOutgoing(id: string, kind: MediaKind, track: MediaStreamTrack | null): Promise<boolean> {
     return this.peers.setOutgoing(id, kind, track);
   }
 
-  setVideoBitrate(id: string, bitsPerSecond: number): Promise<void> {
-    return this.peers.setVideoBitrate(id, bitsPerSecond);
+  setVideoQuality(id: string, bitsPerSecond: number, scaleDownBy: number): Promise<void> {
+    return this.peers.setVideoQuality(id, bitsPerSecond, scaleDownBy);
   }
 
   incoming(id: string, kind: MediaKind): MediaStreamTrack | null {

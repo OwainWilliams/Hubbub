@@ -1,10 +1,11 @@
-import { parseChatMsg, parseStateMsg, type ChatMsg, type SignalData, type StateMsg } from './protocol';
+import { parseReliableMsg, parseStateMsg, type ChatMsg, type ShareMsg, type SignalData, type StateMsg } from './protocol';
 
 export interface PeerEvents {
   onOpen(id: string): void;
   onClosed(id: string): void;
   onState(id: string, m: StateMsg): void;
   onChat(id: string, m: ChatMsg): void;
+  onShare(id: string, m: ShareMsg): void;
 }
 
 export type MediaKind = 'audio' | 'video';
@@ -58,8 +59,10 @@ class PeerLink {
       if (m) events.onState(id, m);
     };
     this.chat.onmessage = (e) => {
-      const m = parseChatMsg(e.data);
-      if (m) events.onChat(id, m);
+      const m = parseReliableMsg(e.data);
+      if (!m) return;
+      if (m.t === 's') events.onShare(id, m);
+      else events.onChat(id, m);
     };
   }
 
@@ -106,13 +109,16 @@ class PeerLink {
     return true;
   }
 
-  /** Limits how much bandwidth this link may use for video. */
-  async setVideoBitrate(bitsPerSecond: number): Promise<void> {
+  /** Limits how much bandwidth this link may use for video, and how large the picture is. Skips no-op changes. */
+  async setVideoQuality(bitsPerSecond: number, scaleDownBy: number): Promise<void> {
     const sender = this.transceiver('video')?.sender;
-    if (!sender) return;
+    if (!sender || !sender.track) return;
     const params = sender.getParameters();
     if (!params.encodings?.length) params.encodings = [{}];
-    params.encodings[0].maxBitrate = bitsPerSecond;
+    const e = params.encodings[0];
+    if (e.maxBitrate === bitsPerSecond && e.scaleResolutionDownBy === scaleDownBy) return;
+    e.maxBitrate = bitsPerSecond;
+    e.scaleResolutionDownBy = scaleDownBy;
     await sender.setParameters(params);
   }
 
@@ -145,7 +151,7 @@ class PeerLink {
     if (this.state.readyState === 'open') this.state.send(JSON.stringify(m));
   }
 
-  sendChat(m: ChatMsg): void {
+  sendChat(m: ChatMsg | ShareMsg): void {
     if (this.chat.readyState === 'open') this.chat.send(JSON.stringify(m));
   }
 
@@ -202,8 +208,8 @@ export class PeerManager {
     return this.links.get(id)?.setOutgoing(kind, track) ?? Promise.resolve(false);
   }
 
-  setVideoBitrate(id: string, bitsPerSecond: number): Promise<void> {
-    return this.links.get(id)?.setVideoBitrate(bitsPerSecond) ?? Promise.resolve();
+  setVideoQuality(id: string, bitsPerSecond: number, scaleDownBy: number): Promise<void> {
+    return this.links.get(id)?.setVideoQuality(bitsPerSecond, scaleDownBy) ?? Promise.resolve();
   }
 
   incoming(id: string, kind: MediaKind): MediaStreamTrack | null {
@@ -216,6 +222,11 @@ export class PeerManager {
 
   broadcastState(m: StateMsg): void {
     for (const l of this.links.values()) l.sendState(m);
+  }
+
+  /** Sends one reliable message to one person. */
+  sendTo(id: string, m: ChatMsg | ShareMsg): void {
+    this.links.get(id)?.sendChat(m);
   }
 
   /** Sends chat to everyone, or only to people `include` accepts (used to keep building chat private). */

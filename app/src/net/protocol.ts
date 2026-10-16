@@ -45,6 +45,16 @@ export interface ChatMsg {
   text: string;
 }
 
+/**
+ * Tells people in the same building that we started or stopped sharing our screen. The picture itself travels
+ * as video on the connection. `full` means there is no room for you to watch (the viewer limit was reached).
+ */
+export interface ShareMsg {
+  t: 's';
+  on: boolean;
+  full?: boolean;
+}
+
 export function isColor(v: unknown): v is string {
   return typeof v === 'string' && /^#[0-9a-fA-F]{6}$/.test(v);
 }
@@ -119,4 +129,12 @@ export function parseChatMsg(raw: unknown): ChatMsg | null {
   if (!isObject(m) || m.t !== 'c' || typeof m.text !== 'string') return null;
   const text = m.text.trim().slice(0, MAX_CHAT);
   return text ? { t: 'c', text } : null;
+}
+
+/** Anything that can arrive on the reliable channel. */
+export function parseReliableMsg(raw: unknown): ChatMsg | ShareMsg | null {
+  const m = parseJson(raw);
+  if (!isObject(m)) return null;
+  if (m.t === 's' && typeof m.on === 'boolean') return m.full === true ? { t: 's', on: m.on, full: true } : { t: 's', on: m.on };
+  return parseChatMsg(raw);
 }

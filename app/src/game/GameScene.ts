@@ -4,6 +4,7 @@ import type { Hud } from '../ui/hud';
 import { CHUNK, TILE, checksumChunk, type Building } from '../world/generate';
 import { I, generateInterior, interiorBlocked, interiorTile, type Interior } from '../world/interior';
 import { hashString } from '../world/rng';
+import { ScreenShare } from '../share/share';
 import { Voice, type Where } from '../voice/voice';
 import { World } from '../world/world';
 import { drawChunk, drawInterior, type ChunkArt, type InteriorArt } from './art';
@@ -48,7 +49,10 @@ export class GameScene extends Phaser.Scene {
   private sentY = NaN;
 
   private voice!: Voice;
+  private share!: ScreenShare;
   private lastVoiceTick = 0;
+  /** The live picture on the in-world screen, while someone is sharing to us. */
+  private tv?: { video: HTMLVideoElement; texture: Phaser.Textures.CanvasTexture; image: Phaser.GameObjects.Image; lastDraw: number; streamId: string };
 
   private readonly chunks = new Map<string, ChunkArt>();
   private chunkX = NaN;
@@ -82,6 +86,9 @@ export class GameScene extends Phaser.Scene {
     this.scale.on('resize', () => (this.interior ? this.frameInterior() : this.syncChunks(true)));
 
     this.voice = new Voice(this.session);
+    this.share = new ScreenShare(this.session);
+    this.share.onChange = () => this.syncShare();
+    this.share.onNotice = (text) => this.hud.system(text);
     this.syncChunks(true);
     this.wireSession();
     this.wireHud();
@@ -106,6 +113,7 @@ export class GameScene extends Phaser.Scene {
     this.y = this.interior.spawn.y - Math.random() * 14;
     this.frameInterior();
     this.afterPlaceChange();
+    this.syncShare();
   }
 
   private exit(): void {
@@ -118,6 +126,7 @@ export class GameScene extends Phaser.Scene {
     this.cameras.main.setZoom(1).startFollow(this.me.box, true, 0.12, 0.12);
     this.syncChunks(true);
     this.afterPlaceChange();
+    this.syncShare();
   }
 
   /** Indoors the camera stays still: the whole room, centred, as large as fits without crowding the panels. */
@@ -258,6 +267,7 @@ export class GameScene extends Phaser.Scene {
       this.hud.chat(this.session.self.name, text, true);
     };
     this.hud.onMic = () => void this.toggleMic();
+    this.hud.onShare = () => void this.toggleShare();
     document.addEventListener('keydown', (e) => {
       if ((e.key === 'm' || e.key === 'M') && document.activeElement?.tagName !== 'INPUT' && this.voice.micOn) this.toggleMic();
     });
@@ -266,6 +276,79 @@ export class GameScene extends Phaser.Scene {
       this.input.keyboard!.enabled = !focused;
       if (focused) this.input.keyboard!.resetKeys();
     };
+  }
+
+  private async toggleShare(): Promise<void> {
+    if (this.share.sharing) {
+      this.share.stop();
+      return;
+    }
+    try {
+      await this.share.start();
+    } catch (err) {
+      this.hud.system(err instanceof Error ? err.message : 'Could not start screen sharing.');
+    }
+  }
+
+  /** Updates the buttons, the in-world screen and the theatre view to match who is sharing. */
+  private syncShare(): void {
+    const watching = this.share.watching;
+    this.hud.setShare({ inside: !!this.interior, sharing: this.share.sharing, watching: watching ? { name: watching.name, stream: watching.stream } : null });
+
+    if (!this.interior || !this.interiorArt) {
+      this.clearTv();
+      return;
+    }
+    if (!watching && !this.share.sharing) {
+      this.clearTv();
+      this.interiorArt.setScreenText('No one is sharing');
+      return;
+    }
+    if (this.share.sharing) {
+      this.clearTv();
+      this.interiorArt.setScreenText('You are sharing');
+      return;
+    }
+    if (watching && this.tv?.streamId !== watching.id) {
+      this.clearTv();
+      const rect = this.interiorArt.screenRect;
+      const video = document.createElement('video');
+      video.muted = true;
+      video.playsInline = true;
+      video.srcObject = watching.stream;
+      void video.play().catch(() => {});
+      const key = 'tv-canvas';
+      if (this.textures.exists(key)) this.textures.remove(key);
+      const texture = this.textures.createCanvas(key, 512, Math.round((512 * rect.h) / rect.w));
+      if (!texture) return;
+      const image = this.add.image(rect.x + rect.w / 2, rect.y + rect.h / 2, key).setDisplaySize(rect.w, rect.h).setDepth(-1e9 + 2);
+      this.tv = { video, texture, image, lastDraw: 0, streamId: watching.id };
+      this.interiorArt.setScreenText(null);
+    }
+  }
+
+  private clearTv(): void {
+    if (!this.tv) return;
+    this.tv.video.srcObject = null;
+    this.tv.image.destroy();
+    this.textures.remove('tv-canvas');
+    this.tv = undefined;
+  }
+
+  /** Copies the current video frame onto the in-world screen, keeping the picture's shape. */
+  private drawTv(time: number): void {
+    const tv = this.tv;
+    if (!tv || time - tv.lastDraw < 66 || tv.video.readyState < 2 || !tv.video.videoWidth) return;
+    tv.lastDraw = time;
+    const ctx = tv.texture.context;
+    const { width: cw, height: ch } = tv.texture;
+    ctx.fillStyle = '#000';
+    ctx.fillRect(0, 0, cw, ch);
+    const scale = Math.min(cw / tv.video.videoWidth, ch / tv.video.videoHeight);
+    const w = tv.video.videoWidth * scale;
+    const h = tv.video.videoHeight * scale;
+    ctx.drawImage(tv.video, (cw - w) / 2, (ch - h) / 2, w, h);
+    tv.texture.refresh();
   }
 
   /** First press asks for the microphone. After that it mutes and unmutes. */
@@ -305,6 +388,15 @@ export class GameScene extends Phaser.Scene {
       world: () => ({ seed: this.world.seed, checksum: checksumChunk(this.world.chunk(0, 0)), loaded: this.chunks.size }),
       doors: () => this.world.chunk(1, 0).buildings.filter((b) => b.enterable).map((b) => ({ id: b.id, name: b.name, x: (b.doorX + 1) * TILE, y: (b.doorY + 0.5) * TILE })),
       room: () => (this.interior ? { spawn: this.interior.spawn, door: { x: (this.interior.doorX + 1) * TILE, y: (this.interior.doorY + 0.5) * TILE }, w: this.interior.w * TILE, h: this.interior.h * TILE } : null),
+      share: async () => {
+        const w = this.share.watching;
+        const stats = w ? await this.session.stats(w.id) : null;
+        return { sharing: this.share.sharing, watching: w?.name ?? null, videoBytes: stats?.videoBytes ?? 0, videoFrames: stats?.videoFrames ?? 0, tvShowing: !!this.tv };
+      },
+      videoBytesFrom: async (name: string) => {
+        const id = [...this.session.roster].find(([, p]) => p.name === name)?.[0];
+        return id ? ((await this.session.stats(id))?.videoBytes ?? 0) : 0;
+      },
       voice: async () => ({ micOn: this.voice.micOn, muted: this.voice.isMuted, peers: await this.voice.debug() }),
       teleport: (x: number, y: number) => {
         this.x = x;
@@ -389,10 +481,14 @@ export class GameScene extends Phaser.Scene {
       this.lastVoiceTick = time;
       const others = new Map<string, Where>();
       for (const [id, r] of this.remotes) if (r.seen) others.set(id, { x: r.tx, y: r.ty, place: r.place });
-      this.voice.update({ x: this.x, y: this.y, place: this.place }, others);
+      const self = { x: this.x, y: this.y, place: this.place };
+      this.voice.update(self, others);
+      this.share.update(self, others);
       this.me.ring.setVisible(this.voice.isSpeaking('self'));
       for (const [id, r] of this.remotes) r.avatar.ring.setVisible(this.voice.isSpeaking(id));
     }
+
+    this.drawTv(time);
 
     for (const r of this.remotes.values()) {
       if (!r.seen || !r.avatar.box.visible) continue;
