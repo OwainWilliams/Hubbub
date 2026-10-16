@@ -1,4 +1,6 @@
 import Phaser from 'phaser';
+import { lookColor, lookKey, type Look } from '../avatar/look';
+import { avatarDataUrl, AVATAR_H, AVATAR_W } from '../avatar/svg';
 import type { Session } from '../net/session';
 import type { Hud } from '../ui/hud';
 import { CHUNK, TILE, checksumChunk, type Building } from '../world/generate';
@@ -15,12 +17,19 @@ const BUBBLE_MS = 6000;
 const CHUNK_PX = CHUNK * TILE;
 const UNLOAD_MARGIN = 1;
 const VOICE_TICK_MS = 100;
+const AVATAR_SCALE = 0.55;
+const AVATAR_SCREEN_H = Math.round(AVATAR_H * AVATAR_SCALE);
 
 interface Avatar {
   box: Phaser.GameObjects.Container;
   bubble: Phaser.GameObjects.Text;
   /** Green ring shown while this person is talking. */
   ring: Phaser.GameObjects.Arc;
+  /** Stand-in circle shown until the avatar picture has loaded. */
+  placeholder: Phaser.GameObjects.Arc;
+  sprite?: Phaser.GameObjects.Image;
+  facing: 1 | -1;
+  moving: boolean;
   bubbleTimer?: Phaser.Time.TimerEvent;
 }
 
@@ -76,10 +85,10 @@ export class GameScene extends Phaser.Scene {
     const spawn = this.world.spawnPoint();
     this.x = spawn.x;
     this.y = spawn.y;
-    this.me = this.makeAvatar(this.session.self.name, this.session.self.color);
+    this.me = this.makeAvatar(this.session.self.name, this.session.self.look);
     this.me.box.setPosition(this.x, this.y);
 
-    for (const p of this.session.roster.values()) this.addRemote(p.id, p.name, p.color);
+    for (const p of this.session.roster.values()) this.addRemote(p.id, p.name, p.look);
 
     this.cameras.main.startFollow(this.me.box, true, 0.12, 0.12);
     this.keys = this.input.keyboard!.addKeys('W,A,S,D,UP,DOWN,LEFT,RIGHT', false) as Record<string, Phaser.Input.Keyboard.Key>;
@@ -206,7 +215,7 @@ export class GameScene extends Phaser.Scene {
   private wireSession(): void {
     const h = this.session.handlers;
     h.peerJoined = (p) => {
-      this.addRemote(p.id, p.name, p.color);
+      this.addRemote(p.id, p.name, p.look);
       this.hud.system(`${p.name} arrived.`);
       this.refreshRoster();
     };
@@ -371,8 +380,8 @@ export class GameScene extends Phaser.Scene {
   private refreshRoster(): void {
     const where = (place: string) => (place ? `in ${this.placeName(place)}` : '');
     this.hud.setRoster([
-      { name: `${this.session.self.name} (you)`, color: this.session.self.color, status: 'connected', where: where(this.place) },
-      ...[...this.session.roster.values()].map((p) => ({ name: p.name, color: p.color, status: p.status, where: where(p.place) })),
+      { name: `${this.session.self.name} (you)`, color: lookColor(this.session.self.look), status: 'connected', where: where(this.place) },
+      ...[...this.session.roster.values()].map((p) => ({ name: p.name, color: lookColor(p.look), status: p.status, where: where(p.place) })),
     ]);
   }
 
@@ -388,6 +397,10 @@ export class GameScene extends Phaser.Scene {
       world: () => ({ seed: this.world.seed, checksum: checksumChunk(this.world.chunk(0, 0)), loaded: this.chunks.size }),
       doors: () => this.world.chunk(1, 0).buildings.filter((b) => b.enterable).map((b) => ({ id: b.id, name: b.name, x: (b.doorX + 1) * TILE, y: (b.doorY + 0.5) * TILE })),
       room: () => (this.interior ? { spawn: this.interior.spawn, door: { x: (this.interior.doorX + 1) * TILE, y: (this.interior.doorY + 0.5) * TILE }, w: this.interior.w * TILE, h: this.interior.h * TILE } : null),
+      avatars: () => ({
+        me: { sprite: !!this.me.sprite, look: this.session.self.look },
+        remotes: Object.fromEntries([...this.remotes].map(([id, r]) => [this.session.roster.get(id)?.name ?? id, { sprite: !!r.avatar.sprite, look: this.session.roster.get(id)?.look }])),
+      }),
       share: async () => {
         const w = this.share.watching;
         const stats = w ? await this.session.stats(w.id) : null;
@@ -410,20 +423,20 @@ export class GameScene extends Phaser.Scene {
 
   // ---- avatars ------------------------------------------------------------------------------------------
 
-  private addRemote(id: string, name: string, color: string): void {
+  private addRemote(id: string, name: string, look: Look): void {
     if (this.remotes.has(id)) return;
-    const avatar = this.makeAvatar(name, color);
+    const avatar = this.makeAvatar(name, look);
     avatar.box.setVisible(false); // hidden until their first position arrives
     this.remotes.set(id, { avatar, tx: 0, ty: 0, seq: 0, seen: false, place: '' });
   }
 
-  private makeAvatar(name: string, color: string): Avatar {
-    const body = this.add.circle(0, 0, PLAYER_RADIUS, Phaser.Display.Color.HexStringToColor(color).color).setStrokeStyle(3, 0x14181f);
+  private makeAvatar(name: string, look: Look): Avatar {
+    const placeholder = this.add.circle(0, 0, PLAYER_RADIUS, Phaser.Display.Color.HexStringToColor(lookColor(look)).color).setStrokeStyle(3, 0x14181f);
     const label = this.add
-      .text(0, PLAYER_RADIUS + 6, name, { fontFamily: 'system-ui, sans-serif', fontSize: '13px', color: '#e8dcc0', stroke: '#14181f', strokeThickness: 3 })
+      .text(0, 20, name, { fontFamily: 'system-ui, sans-serif', fontSize: '13px', color: '#e8dcc0', stroke: '#14181f', strokeThickness: 3 })
       .setOrigin(0.5, 0);
     const bubble = this.add
-      .text(0, -PLAYER_RADIUS - 10, '', {
+      .text(0, -AVATAR_SCREEN_H - 6, '', {
         fontFamily: 'system-ui, sans-serif',
         fontSize: '13px',
         color: '#14181f',
@@ -434,9 +447,45 @@ export class GameScene extends Phaser.Scene {
       })
       .setOrigin(0.5, 1)
       .setVisible(false);
-    const ring = this.add.circle(0, 0, PLAYER_RADIUS + 6).setStrokeStyle(3, 0x6fbf73).setVisible(false);
-    const box = this.add.container(0, 0, [ring, body, label, bubble]).setData('name', name);
-    return { box, bubble, ring };
+    const ring = this.add.circle(0, 8, PLAYER_RADIUS + 8).setStrokeStyle(3, 0x6fbf73).setVisible(false);
+    const box = this.add.container(0, 0, [ring, placeholder, label, bubble]).setData('name', name);
+    const avatar: Avatar = { box, bubble, ring, placeholder, facing: 1, moving: false };
+    void this.avatarTexture(look).then((key) => {
+      if (!box.scene) return; // the person left before their picture loaded
+      const sprite = this.add.image(0, 16, key).setOrigin(0.5, 152 / AVATAR_H).setScale(AVATAR_SCALE);
+      box.addAt(sprite, 1);
+      placeholder.destroy();
+      avatar.sprite = sprite;
+    });
+    return avatar;
+  }
+
+  private readonly pendingTextures = new Map<string, Promise<string>>();
+
+  /** Loads the picture for a look once and shares it between everyone who looks the same. */
+  private avatarTexture(look: Look): Promise<string> {
+    const key = `avatar:${lookKey(look)}`;
+    if (this.textures.exists(key)) return Promise.resolve(key);
+    let p = this.pendingTextures.get(key);
+    if (!p) {
+      p = new Promise((resolve) => {
+        const img = new Image(AVATAR_W, AVATAR_H);
+        img.onload = () => {
+          if (!this.textures.exists(key)) this.textures.addImage(key, img);
+          resolve(key);
+        };
+        img.src = avatarDataUrl(look);
+      });
+      this.pendingTextures.set(key, p);
+    }
+    return p;
+  }
+
+  /** Faces the way they are walking and bobs a little while moving. */
+  private animate(a: Avatar, time: number): void {
+    if (!a.sprite) return;
+    a.sprite.setFlipX(a.facing < 0);
+    a.sprite.y = 16 + (a.moving ? Math.sin(time * 0.02) * 2.5 : 0);
   }
 
   private say(a: Avatar, text: string): void {
@@ -459,6 +508,9 @@ export class GameScene extends Phaser.Scene {
     this.x = next.x;
     this.y = next.y;
     this.me.box.setPosition(this.x, this.y).setDepth(this.y);
+    this.me.moving = dx !== 0 || dy !== 0;
+    if (dx !== 0) this.me.facing = dx > 0 ? 1 : -1;
+    this.animate(this.me, time);
 
     if (room) {
       if (interiorTile(room, Math.floor(this.x / TILE), Math.floor(this.y / TILE)) === I.DOOR) this.exit();
@@ -493,7 +545,11 @@ export class GameScene extends Phaser.Scene {
     for (const r of this.remotes.values()) {
       if (!r.seen || !r.avatar.box.visible) continue;
       const b = r.avatar.box;
+      const gap = r.tx - b.x;
+      r.avatar.moving = Math.abs(gap) + Math.abs(r.ty - b.y) > 2;
+      if (Math.abs(gap) > 1.5) r.avatar.facing = gap > 0 ? 1 : -1;
       b.setPosition(smoothToward(b.x, r.tx, dt), smoothToward(b.y, r.ty, dt)).setDepth(b.y);
+      this.animate(r.avatar, time);
     }
   }
 }

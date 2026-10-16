@@ -6,7 +6,7 @@ import type { Env } from './env';
  * offers, answers and ICE candidates. Chat, positions, voice and video never pass through here.
  *
  * Protocol (JSON text frames), see docs/protocol.md:
- *   client -> server  {type:'hello', name, color} | {type:'signal', to, data}
+ *   client -> server  {type:'hello', name, color, look} | {type:'signal', to, data}
  *   server -> client  {type:'welcome', id, peers} | {type:'peer-joined', peer} | {type:'peer-left', id}
  *                     | {type:'signal', from, data}
  */
@@ -21,6 +21,8 @@ interface PeerInfo {
   id: string;
   name: string;
   color: string;
+  /** Five small numbers describing the avatar (kind, hat, robe, skin, extra). The client decides what they mean. */
+  look: number[];
 }
 
 interface Attachment extends PeerInfo {
@@ -35,6 +37,10 @@ function newId(): string {
 function cleanName(v: unknown): string {
   const s = typeof v === 'string' ? v.replace(/[\u0000-\u001f\u007f]/g, '').trim() : '';
   return s.slice(0, MAX_NAME) || 'Guest';
+}
+
+function cleanLook(v: unknown): number[] {
+  return Array.isArray(v) && v.length === 5 && v.every((n) => Number.isInteger(n) && n >= 0 && n <= 9) ? (v as number[]) : [0, 0, 0, 0, 0];
 }
 
 function cleanColor(v: unknown): string {
@@ -62,7 +68,7 @@ export class Room implements DurableObject {
     if (full) {
       server.close(CLOSE_ROOM_FULL, 'room-full');
     } else {
-      const att: Attachment = { id: newId(), name: '', color: '#d9a441', joined: false, connectedAt: Date.now() };
+      const att: Attachment = { id: newId(), name: '', color: '#d9a441', look: [0, 0, 0, 0, 0], joined: false, connectedAt: Date.now() };
       server.serializeAttachment(att);
       // Sockets that never say hello are swept so they cannot hold seats in the room.
       if ((await this.state.storage.getAlarm()) === null) {
@@ -102,10 +108,11 @@ export class Room implements DurableObject {
     if (msg.type === 'hello' && !att.joined) {
       att.name = cleanName(msg.name);
       att.color = cleanColor(msg.color);
+      att.look = cleanLook(msg.look);
       att.joined = true;
       ws.serializeAttachment(att);
       ws.send(JSON.stringify({ type: 'welcome', id: att.id, peers: this.peersExcept(ws) }));
-      this.broadcast({ type: 'peer-joined', peer: { id: att.id, name: att.name, color: att.color } }, ws);
+      this.broadcast({ type: 'peer-joined', peer: { id: att.id, name: att.name, color: att.color, look: att.look } }, ws);
       return;
     }
 
@@ -144,7 +151,7 @@ export class Room implements DurableObject {
     const peers: PeerInfo[] = [];
     for (const ws of this.state.getWebSockets()) {
       const a = ws.deserializeAttachment() as Attachment | null;
-      if (ws !== skip && a?.joined) peers.push({ id: a.id, name: a.name, color: a.color });
+      if (ws !== skip && a?.joined) peers.push({ id: a.id, name: a.name, color: a.color, look: a.look });
     }
     return peers;
   }

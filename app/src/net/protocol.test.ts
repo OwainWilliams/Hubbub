@@ -1,11 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { cleanName, parseChatMsg, parseServerMsg, parseStateMsg } from './protocol';
 
-const peer = { id: 'abc12345', name: 'Brenda', color: '#5f7a5a' };
+const peer = { id: 'abc12345', name: 'Brenda', color: '#5f7a5a', look: { kind: 1, hat: 2, robe: 3, skin: 0, extra: 1 } };
+const wirePeer = { ...peer, look: [1, 2, 3, 0, 1] };
 
 describe('parseServerMsg', () => {
   it('accepts valid messages', () => {
-    expect(parseServerMsg(JSON.stringify({ type: 'welcome', id: 'me', peers: [peer] }))).toEqual({ type: 'welcome', id: 'me', peers: [peer] });
+    expect(parseServerMsg(JSON.stringify({ type: 'welcome', id: 'me', peers: [wirePeer] }))).toEqual({ type: 'welcome', id: 'me', peers: [peer] });
     expect(parseServerMsg(JSON.stringify({ type: 'peer-left', id: 'x' }))).toEqual({ type: 'peer-left', id: 'x' });
     expect(parseServerMsg(JSON.stringify({ type: 'signal', from: 'x', data: { kind: 'offer', sdp: 'v=0' } }))).not.toBeNull();
   });
@@ -16,8 +17,12 @@ describe('parseServerMsg', () => {
     expect(parseServerMsg(JSON.stringify({ type: 'signal', from: 'x', data: { kind: 'bogus' } }))).toBeNull();
     expect(parseServerMsg(JSON.stringify({ type: 'unknown' }))).toBeNull();
   });
+  it('falls back to the default look when the look is missing or malformed', () => {
+    const m = parseServerMsg(JSON.stringify({ type: 'peer-joined', peer: { id: 'x', name: 'N', color: '#5f7a5a', look: 'nope' } }));
+    expect(m).toMatchObject({ peer: { look: { kind: 0, hat: 0, robe: 0, skin: 0, extra: 0 } } });
+  });
   it('cleans names from other people', () => {
-    const m = parseServerMsg(JSON.stringify({ type: 'peer-joined', peer: { ...peer, name: '  \u0007Bad\u0000Name  ' } }));
+    const m = parseServerMsg(JSON.stringify({ type: 'peer-joined', peer: { ...wirePeer, name: '  \u0007Bad\u0000Name  ' } }));
     expect(m).toMatchObject({ peer: { name: 'BadName' } });
   });
 });

@@ -72,4 +72,5 @@ Secrets survive redeploys. Without them the app uses STUN only.
 - Phase 1 (walk and chat): built and tested with real browsers on one machine. Not yet tested across different networks or with TURN. See [docs/protocol.md](docs/protocol.md).
 - Phase 3 (generated world) and Phase 4 (buildings): built and tested. The town is endless and identical for everyone in a room; four kinds of square (houses, market, park, plaza); enterable buildings with generated interiors; private chat inside. Art is placeholder shapes, kept in `app/src/game/art.ts` so a Kenney tileset can replace it.
 - Phase 5 (proximity voice) and Phase 6 (screen sharing): built and tested with real browsers using a fake microphone and a fake screen. Browsers' real screen picker and real speakers could not be tested automatically.
-- Next: avatars (needs the art packs), then reliability and polish.
+- Phase 2 (avatars): a builder on the join screen (kind, hat, robe, skin, extras), remembered in the browser and shown to everyone, with facing and a walking bob. The drawing is placeholder SVG in `app/src/avatar/`; replacing it with layered LPC sprites only touches that folder.
+- Next: reliability and polish (reconnecting failed links, rate limiting, phone layout).

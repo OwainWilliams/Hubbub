@@ -23,8 +23,16 @@
       #join p.sub { margin: 0 0 12px; color: var(--mute); }
       label { font-size: .8rem; letter-spacing: .08em; text-transform: uppercase; color: var(--mute); margin-top: 10px; }
       input[type=text] { background: var(--night); color: var(--paper); border: 1px solid var(--line); border-radius: 3px; padding: 10px 12px; width: 100%; }
-      #swatches { display: flex; gap: 8px; }
-      .sw { width: 32px; height: 32px; border-radius: 50%; border: 2px solid var(--line); cursor: pointer; padding: 0; }
+      #avatar-picker { display: grid; grid-template-columns: auto 1fr; gap: 14px; align-items: start; background: var(--night); border: 1px solid var(--line); border-radius: 4px; padding: 12px; }
+      .avatar-preview { background: radial-gradient(circle at 50% 75%, #46586a, #1d2733); border-radius: 4px; }
+      .avatar-controls { display: grid; gap: 8px; min-width: 0; }
+      .avatar-row { display: grid; gap: 3px; }
+      .avatar-row > span { font-size: .72rem; letter-spacing: .08em; text-transform: uppercase; color: var(--mute); }
+      .avatar-options { display: flex; gap: 6px; flex-wrap: wrap; }
+      .chip { background: var(--ink); color: var(--paper); border: 1px solid var(--line); border-radius: 3px; padding: 4px 10px; cursor: pointer; }
+      .chip[aria-pressed=true] { border-color: var(--ochre); color: var(--ochre); }
+      @media (max-width: 460px) { #avatar-picker { grid-template-columns: 1fr; justify-items: center; } }
+      .sw { width: 26px; height: 26px; border-radius: 50%; border: 2px solid var(--line); cursor: pointer; padding: 0; }
       .sw[aria-pressed=true] { border-color: var(--paper); box-shadow: 0 0 0 2px var(--ochre); }
       #join-button { margin-top: 14px; background: var(--ochre); color: var(--ink); border: 0; border-radius: 3px; padding: 11px 18px; font-weight: 700; cursor: pointer; }
       #join-button:disabled { opacity: .6; cursor: default; }
@@ -92,8 +100,8 @@
         <p class="sub">A little town to wander around and chat in.</p>
         <label for="name">Your name</label>
         <input type="text" id="name" maxlength="24" placeholder="e.g. Mortimer" />
-        <label>Your colour</label>
-        <div id="swatches"></div>
+        <label>Your look</label>
+        <div id="avatar-picker"></div>
         <label for="code">Room code</label>
         <input type="text" id="code" maxlength="64" placeholder="Leave empty to start a new room" />
         <button id="join-button" type="submit">Join</button>

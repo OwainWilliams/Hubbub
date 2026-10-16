@@ -10,7 +10,7 @@ Client to server:
 
 | Message | Meaning |
 |---|---|
-| `{"type":"hello","name":"Ann","color":"#d9a441"}` | Join with a display name (max 24) and avatar colour. Must be sent within 10 s of connecting. |
+| `{"type":"hello","name":"Ann","color":"#d9a441","look":[1,2,3,1,1]}` | Join with a display name (max 24), a colour (used for the roster dot) and an avatar `look`: five small numbers (kind, hat, robe, skin, extra) that the client turns into a picture. Must be sent within 10 s of connecting. |
 | `{"type":"signal","to":"<id>","data":{...}}` | Relay a WebRTC setup message to one person. `data` is `{"kind":"offer"\|"answer","sdp":"..."}` or `{"kind":"ice","candidate":{...}}`. |
 | `ping` (plain text) | Keepalive every 25 s. The server answers `pong` without waking. |
 
@@ -18,8 +18,8 @@ Server to client:
 
 | Message | Meaning |
 |---|---|
-| `{"type":"welcome","id":"<id>","peers":[{id,name,color}]}` | Your id and everyone already in the room. |
-| `{"type":"peer-joined","peer":{id,name,color}}` | Someone arrived. |
+| `{"type":"welcome","id":"<id>","peers":[{id,name,color,look}]}` | Your id and everyone already in the room. |
+| `{"type":"peer-joined","peer":{id,name,color,look}}` | Someone arrived. |
 | `{"type":"peer-left","id":"<id>"}` | Someone left. |
 | `{"type":"signal","from":"<id>","data":{...}}` | A relayed setup message. |
 

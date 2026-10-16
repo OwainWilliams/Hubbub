@@ -1,3 +1,4 @@
+import { lookToWire, type Look } from '../avatar/look';
 import { WORKER_URL } from './config';
 import { PeerManager, type LinkStats, type MediaKind } from './peers';
 import { MAX_PEERS, type ChatMsg, type PeerInfo, type ServerMsg, type ShareMsg, type StateMsg } from './protocol';
@@ -61,7 +62,7 @@ export class Session {
     private peers: PeerManager,
   ) {}
 
-  static async join(opts: { code: string; name: string; color: string }): Promise<Session> {
+  static async join(opts: { code: string; name: string; color: string; look: Look }): Promise<Session> {
     const ice = await fetchIceServers();
     const sig = new Signalling(roomUrl(opts.code));
     await sig.open();
@@ -78,7 +79,7 @@ export class Session {
           resolve(m);
         }
       };
-      sig.send({ type: 'hello', name: opts.name, color: opts.color });
+      sig.send({ type: 'hello', name: opts.name, color: opts.color, look: lookToWire(opts.look) });
     });
 
     // Built in two steps because the peer callbacks need the session object that owns the manager.
@@ -90,7 +91,7 @@ export class Session {
       onChat: (id, m: ChatMsg) => holder.session?.handlers.chat?.(id, m.text),
       onShare: (id, m) => holder.session?.shareListeners.forEach((fn) => fn(id, m)),
     });
-    const session = new Session({ id: welcome.id, name: opts.name, color: opts.color }, opts.code, sig, peers);
+    const session = new Session({ id: welcome.id, name: opts.name, color: opts.color, look: opts.look }, opts.code, sig, peers);
     holder.session = session;
 
     sig.onmessage = (m) => session.onServer(m);

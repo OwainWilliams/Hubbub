@@ -1,14 +1,14 @@
+import { defaultLook, parseLook, randomLook, type Look } from '../avatar/look';
 import { WORKER_URL } from '../net/config';
-import { cleanName, isColor } from '../net/protocol';
+import { cleanName } from '../net/protocol';
 import { normaliseRoomCode, randomRoomCode } from '../util/roomCode';
+import { mountAvatarPicker } from './avatarPicker';
 
 export interface JoinChoice {
   name: string;
-  color: string;
+  look: Look;
   code: string;
 }
-
-const COLORS = ['#d9a441', '#5f7a5a', '#a9573b', '#6d4a73', '#4f6b86', '#c46f8a'];
 
 function load(key: string): string | null {
   try {
@@ -32,33 +32,20 @@ export function initJoin(onJoin: (c: JoinChoice) => Promise<void>): void {
   const form = document.getElementById('join-form') as HTMLFormElement;
   const nameInput = document.getElementById('name') as HTMLInputElement;
   const codeInput = document.getElementById('code') as HTMLInputElement;
-  const swatches = document.getElementById('swatches')!;
   const errorEl = document.getElementById('join-error')!;
   const statusEl = document.getElementById('server-status')!;
   const button = document.getElementById('join-button') as HTMLButtonElement;
 
   nameInput.value = load('hubbub.name') ?? '';
   codeInput.value = location.hash.slice(1) ? decodeURIComponent(location.hash.slice(1)) : '';
-  let color = isColor(load('hubbub.color')) ? (load('hubbub.color') as string) : COLORS[0];
-
-  const paint = () => {
-    swatches.replaceChildren(
-      ...COLORS.map((c) => {
-        const b = document.createElement('button');
-        b.type = 'button';
-        b.className = 'sw';
-        b.style.background = c;
-        b.setAttribute('aria-label', `Colour ${c}`);
-        b.setAttribute('aria-pressed', String(c === color));
-        b.onclick = () => {
-          color = c;
-          paint();
-        };
-        return b;
-      }),
-    );
-  };
-  paint();
+  let saved: Look;
+  try {
+    const raw = load('hubbub.look');
+    saved = raw ? parseLook(JSON.parse(raw)) : randomLook();
+  } catch {
+    saved = defaultLook();
+  }
+  const picker = mountAvatarPicker(document.getElementById('avatar-picker')!, saved, () => {});
 
   fetch(`${WORKER_URL}/health`)
     .then((r) => r.json() as Promise<{ ok?: boolean }>)
@@ -83,12 +70,13 @@ export function initJoin(onJoin: (c: JoinChoice) => Promise<void>): void {
     }
     const name = cleanName(nameInput.value);
     save('hubbub.name', name);
-    save('hubbub.color', color);
+    const look = picker.get();
+    save('hubbub.look', JSON.stringify(look));
 
     button.disabled = true;
     button.textContent = 'Joining…';
     try {
-      await onJoin({ name, color, code });
+      await onJoin({ name, look, code });
       root.hidden = true;
     } catch (err) {
       errorEl.textContent = err instanceof Error ? err.message : 'Could not join.';

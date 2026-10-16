@@ -1,5 +1,7 @@
 // Wire formats. Keep in step with worker/src/room.ts and docs/protocol.md.
 
+import { defaultLook, lookFromWire, type Look } from '../avatar/look';
+
 export const MAX_PEERS = 12;
 export const MAX_NAME = 24;
 export const MAX_CHAT = 200;
@@ -8,6 +10,7 @@ export interface PeerInfo {
   id: string;
   name: string;
   color: string;
+  look: Look;
 }
 
 export type SignalData =
@@ -21,7 +24,7 @@ export type ServerMsg =
   | { type: 'signal'; from: string; data: SignalData };
 
 export type ClientMsg =
-  | { type: 'hello'; name: string; color: string }
+  | { type: 'hello'; name: string; color: string; look: number[] }
   | { type: 'signal'; to: string; data: SignalData };
 
 /**
@@ -80,7 +83,7 @@ function parseJson(raw: unknown): unknown {
 
 function parsePeer(v: unknown): PeerInfo | null {
   if (!isObject(v) || typeof v.id !== 'string' || !isColor(v.color)) return null;
-  return { id: v.id, name: cleanName(v.name), color: v.color };
+  return { id: v.id, name: cleanName(v.name), color: v.color, look: lookFromWire(v.look) ?? defaultLook() };
 }
 
 function parseSignalData(v: unknown): SignalData | null {
