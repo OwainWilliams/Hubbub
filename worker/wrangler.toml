@@ -1,0 +1,12 @@
+name = "hubbub-signal"
+main = "src/index.ts"
+compatibility_date = "2024-11-01"
+
+# One Durable Object per room. SQLite-backed classes are available on the free plan.
+[[durable_objects.bindings]]
+name = "ROOMS"
+class_name = "Room"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["Room"]

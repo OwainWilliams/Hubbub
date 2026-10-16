@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Hubbub</title>
+    <style>
+      html, body { margin: 0; height: 100%; background: #14181f; color: #e8dcc0; font-family: system-ui, sans-serif; }
+      #game { position: fixed; inset: 0; }
+      #credits-link { position: fixed; right: 12px; bottom: 8px; font-size: 12px; color: #9aa7b2; }
+      #credits-link a { color: inherit; }
+      #credits { position: fixed; inset: 0; background: rgba(20,24,31,.96); padding: 24px; overflow: auto; display: none; }
+      #credits.open { display: block; }
+      #credits h1 { margin-top: 0; }
+      #credits button { font: inherit; padding: 6px 14px; }
+    </style>
+  </head>
+  <body>
+    <div id="game"></div>
+    <div id="credits-link"><a href="#credits" id="open-credits">Credits</a></div>
+    <div id="credits" role="dialog" aria-label="Credits">
+      <h1>Credits</h1>
+      <p>Hubbub uses free art packs. Attributions are listed here as assets are added.</p>
+      <ul id="credits-list">
+        <li>No third-party art added yet.</li>
+      </ul>
+      <button id="close-credits">Close</button>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
